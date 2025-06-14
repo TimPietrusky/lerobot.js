@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "declaration": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/lerobot/**/*", "src/cli/**/*"],
+  "exclude": [
+    "src/main.ts",
+    "src/counter.ts",
+    "src/style.css",
+    "src/vite-env.d.ts"
+  ]
+}
