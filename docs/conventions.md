@@ -8,6 +8,10 @@
 
 > Lower the barrier to entry for robotics by making cutting-edge robotic AI accessible through JavaScript, the world's most widely used programming language.
 
+## Core Rules
+
+- you never start the dev server, because it is already running
+
 ## Project Goals
 
 ### Primary Objectives
@@ -63,8 +67,8 @@ lerobot/
 │   ├── devices/      # Hardware device interfaces
 │   └── utils/        # Shared utilities
 ├── core/             # Core robotics primitives
-├── web/              # Browser-specific implementations
-└── node/             # Node.js-specific implementations
+├── node/             # Node.js-specific implementations
+└── web/              # Browser-specific implementations
 ```
 
 ### 3. Platform Abstraction

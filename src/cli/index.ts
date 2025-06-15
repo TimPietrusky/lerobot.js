@@ -7,7 +7,7 @@
  * Maintains compatibility with Python lerobot command structure
  */
 
-import { findPort } from "../lerobot/find_port.js";
+import { findPort } from "../lerobot/node/find_port.js";
 
 /**
  * Show usage information
