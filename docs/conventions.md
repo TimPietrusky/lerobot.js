@@ -10,7 +10,11 @@
 
 ## Core Rules
 
-- you never start the dev server, because it is already running
+- **Never Start/Stop Dev Server**: The development server is already managed by the user - never run commands to start, stop, or restart the server
+- **Python lerobot Faithfulness**: Maintain exact UX/API compatibility with Python lerobot - commands, terminology, and workflows must match identically
+- **Serial API Separation**: Always use `serialport` package for Node.js and Web Serial API for browsers - never mix or bridge these incompatible APIs
+- **Minimal Console Output**: Only show essential information - reduce cognitive load for users
+- **Hardware-First Testing**: Always validate with real hardware, not just simulation
 
 ## Project Goals
 
@@ -74,10 +78,25 @@ lerobot/
 ### 3. Platform Abstraction
 
 - **Universal Core**: Platform-agnostic robotics logic
-- **Web Adapters**: Browser-specific implementations (WebGL, WebAssembly, WebUSB)
-- **Node Adapters**: Node.js implementations (native modules, serial ports)
+- **Web Adapters**: Browser-specific implementations (WebGL, WebAssembly, **Web Serial API**)
+- **Node Adapters**: Node.js implementations (native modules, **serialport package**)
 
-### 4. Progressive Enhancement
+### 4. Serial Communication Standards (Critical)
+
+**Serial communication must use platform-appropriate APIs - never mix or bridge:**
+
+- **Node.js Platform**: ALWAYS use `serialport` package
+  - Event-based: `port.on('data', callback)`
+  - Programmatic port listing: `SerialPort.list()`
+  - Direct system access: `new SerialPort({ path: 'COM4' })`
+- **Web Platform**: ALWAYS use Web Serial API
+  - Promise/Stream-based: `await reader.read()`
+  - User permission required: `navigator.serial.requestPort()`
+  - Browser security model: User must select port via dialog
+
+**Why this matters:** The APIs are completely incompatible - different patterns, different capabilities, different security models. Mixing them leads to broken implementations.
+
+### 5. Progressive Enhancement
 
 - **Core Functionality**: Works everywhere (basic policy inference)
 - **Enhanced Features**: Leverage platform capabilities (GPU acceleration, hardware access)
@@ -145,3 +164,44 @@ lerobot/
 - **3D Graphics**: Three.js for simulation and visualization
 - **Hardware**: Platform-specific libraries for device access
 - **Development**: Vitest, ESLint, Prettier
+
+## Hardware Implementation Lessons
+
+### Critical Hardware Compatibility
+
+#### Baudrate Configuration
+
+- **Feetech Motors (SO-100)**: MUST use 1,000,000 baud to match Python lerobot
+- **Python Reference**: `DEFAULT_BAUDRATE = 1_000_000` in Python lerobot codebase
+- **Common Mistake**: Using 9600 baud causes "Read timeout" errors despite device connection
+- **Verification**: Always test with real hardware - simulation won't catch baudrate issues
+
+#### Console Output Philosophy
+
+- **Minimal Cognitive Load**: Reduce console noise to absolute minimum
+- **Silent Operations**: Connection, initialization, cleanup should be silent unless error occurs
+- **Error-Only Logging**: Only show output when user needs to take action or when errors occur
+- **Professional UX**: Robotics tools should have clean, distraction-free interfaces
+
+#### Calibration Flow Matching
+
+- **Python Behavior**: When user hits Enter during range recording, reading stops IMMEDIATELY
+- **No Final Reads**: Never read motor positions after user completes calibration
+- **User Expectation**: After Enter, user should be able to release robot (positions will change)
+- **Flow Testing**: Always validate against Python lerobot's exact behavior
+
+### Development Process Requirements
+
+#### CLI Build Process
+
+- **Critical**: After TypeScript changes, MUST run `pnpm run build` to update CLI
+- **Global CLI**: `lerobot` command uses compiled `dist/` files, not source
+- **Testing Flow**: Edit source → Build → Test CLI → Repeat
+- **Common Mistake**: Testing source changes without rebuilding CLI
+
+#### Hardware Testing Priority
+
+- **Real Hardware Required**: Simulation cannot catch hardware-specific issues
+- **Baudrate Validation**: Only real devices will reveal communication problems
+- **User Flow Testing**: Test complete calibration workflows with actual hardware
+- **Port Management**: Ensure proper port cleanup between testing sessions
