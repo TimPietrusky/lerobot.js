@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>🤖 lerobot.js - Vanilla Demo</title>
+    <meta
+      name="description"
+      content="State-of-the-art AI for real-world robotics in JavaScript/TypeScript"
+    />
+    <style>
+      /* Prevent flash of unstyled content */
+      body {
+        opacity: 0;
+      }
+      body.loaded {
+        opacity: 1;
+        transition: opacity 0.3s ease;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+    <script>
+      // Add loaded class when page is ready
+      window.addEventListener("load", () => {
+        document.body.classList.add("loaded");
+      });
+    </script>
+  </body>
+</html>
