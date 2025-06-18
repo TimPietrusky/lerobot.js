@@ -11,14 +11,70 @@ import { SerialPort } from "serialport";
 import logUpdate from "log-update";
 
 /**
- * SO-100 device configuration for calibration
+ * Sign-magnitude encoding functions for Feetech STS3215 motors
+ * Mirrors Python lerobot/common/utils/encoding_utils.py
+ */
+
+/**
+ * Encode a signed integer using sign-magnitude format
+ * Bit at sign_bit_index represents sign (0=positive, 1=negative)
+ * Lower bits represent magnitude
+ */
+function encodeSignMagnitude(value: number, signBitIndex: number): number {
+  const maxMagnitude = (1 << signBitIndex) - 1;
+  const magnitude = Math.abs(value);
+
+  if (magnitude > maxMagnitude) {
+    throw new Error(
+      `Magnitude ${magnitude} exceeds ${maxMagnitude} (max for signBitIndex=${signBitIndex})`
+    );
+  }
+
+  const directionBit = value < 0 ? 1 : 0;
+  return (directionBit << signBitIndex) | magnitude;
+}
+
+/**
+ * Decode a sign-magnitude encoded value back to signed integer
+ * Extracts sign bit and magnitude, then applies sign
+ */
+function decodeSignMagnitude(
+  encodedValue: number,
+  signBitIndex: number
+): number {
+  const directionBit = (encodedValue >> signBitIndex) & 1;
+  const magnitudeMask = (1 << signBitIndex) - 1;
+  const magnitude = encodedValue & magnitudeMask;
+  return directionBit ? -magnitude : magnitude;
+}
+
+/**
+ * Device configuration for calibration
+ * Despite the "SO100" name, this interface is now device-agnostic and configurable
+ * for any robot using similar serial protocols (Feetech STS3215, etc.)
  */
 export interface SO100CalibrationConfig {
   deviceType: "so100_follower" | "so100_leader";
   port: SerialPort;
   motorNames: string[];
+  motorIds: number[]; // Device-specific motor IDs (e.g., [1,2,3,4,5,6] for SO-100)
   driveModes: number[];
   calibModes: string[];
+
+  // Protocol-specific configuration
+  protocol: {
+    resolution: number; // Motor resolution (e.g., 4096 for STS3215)
+    homingOffsetAddress: number; // Register address for homing offset (e.g., 31 for STS3215)
+    homingOffsetLength: number; // Length in bytes for homing offset register
+    presentPositionAddress: number; // Register address for present position (e.g., 56 for STS3215)
+    presentPositionLength: number; // Length in bytes for present position register
+    minPositionLimitAddress: number; // Register address for min position limit (e.g., 9 for STS3215)
+    minPositionLimitLength: number; // Length in bytes for min position limit register
+    maxPositionLimitAddress: number; // Register address for max position limit (e.g., 11 for STS3215)
+    maxPositionLimitLength: number; // Length in bytes for max position limit register
+    signMagnitudeBit: number; // Sign bit index for homing offset encoding (e.g., 11 for STS3215)
+  };
+
   limits: {
     position_min: number[];
     position_max: number[];
@@ -29,14 +85,16 @@ export interface SO100CalibrationConfig {
 
 /**
  * Calibration results structure matching Python lerobot format
+ * This should match the MotorCalibration dataclass structure in Python
  */
 export interface CalibrationResults {
-  homing_offset: number[];
-  drive_mode: number[];
-  start_pos: number[];
-  end_pos: number[];
-  calib_mode: string[];
-  motor_names: string[];
+  [motorName: string]: {
+    id: number;
+    drive_mode: number;
+    homing_offset: number;
+    range_min: number;
+    range_max: number;
+  };
 }
 
 /**
@@ -80,32 +138,38 @@ export async function initializeDeviceCommunication(
 
 /**
  * Read current motor positions
- * Uses STS3215 protocol - same for all SO-100 devices
+ * Uses device-specific protocol - configurable for different robot types
  */
 export async function readMotorPositions(
   config: SO100CalibrationConfig,
   quiet: boolean = false
 ): Promise<number[]> {
   const motorPositions: number[] = [];
-  const motorIds = [1, 2, 3, 4, 5, 6]; // SO-100 uses servo IDs 1-6
 
-  for (let i = 0; i < motorIds.length; i++) {
-    const motorId = motorIds[i];
+  for (let i = 0; i < config.motorIds.length; i++) {
+    const motorId = config.motorIds[i];
     const motorName = config.motorNames[i];
 
     try {
-      // Create STS3215 Read Position packet
+      // Create Read Position packet using configurable address
       const packet = Buffer.from([
         0xff,
         0xff,
         motorId,
         0x04,
         0x02,
-        0x38,
+        config.protocol.presentPositionAddress, // Configurable address instead of hardcoded 0x38
         0x02,
         0x00,
       ]);
-      const checksum = ~(motorId + 0x04 + 0x02 + 0x38 + 0x02) & 0xff;
+      const checksum =
+        ~(
+          motorId +
+          0x04 +
+          0x02 +
+          config.protocol.presentPositionAddress +
+          0x02
+        ) & 0xff;
       packet[7] = checksum;
 
       if (!config.port || !config.port.isOpen) {
@@ -131,16 +195,19 @@ export async function readMotorPositions(
             const position = response[5] | (response[6] << 8);
             motorPositions.push(position);
           } else {
-            motorPositions.push(2047); // Fallback to center
+            // Use half of max resolution as fallback instead of hardcoded 2047
+            motorPositions.push(
+              Math.floor((config.protocol.resolution - 1) / 2)
+            );
           }
         } else {
-          motorPositions.push(2047);
+          motorPositions.push(Math.floor((config.protocol.resolution - 1) / 2));
         }
       } catch (readError) {
-        motorPositions.push(2047);
+        motorPositions.push(Math.floor((config.protocol.resolution - 1) / 2));
       }
     } catch (error) {
-      motorPositions.push(2047);
+      motorPositions.push(Math.floor((config.protocol.resolution - 1) / 2));
     }
 
     // Minimal delay between servo reads for 30Hz performance
@@ -158,7 +225,6 @@ export async function performInteractiveCalibration(
   config: SO100CalibrationConfig
 ): Promise<CalibrationResults> {
   // Step 1: Set homing position
-  console.log("📍 STEP 1: Set Homing Position");
   await promptUser(
     `Move the SO-100 ${config.deviceType} to the MIDDLE of its range of motion and press ENTER...`
   );
@@ -166,18 +232,30 @@ export async function performInteractiveCalibration(
   const homingOffsets = await setHomingOffsets(config);
 
   // Step 2: Record ranges of motion with live updates
-  console.log("\n📏 STEP 2: Record Joint Ranges");
   const { rangeMins, rangeMaxes } = await recordRangesOfMotion(config);
 
-  // Compile results silently
-  const results: CalibrationResults = {
-    homing_offset: config.motorNames.map((name) => homingOffsets[name]),
-    drive_mode: config.driveModes,
-    start_pos: config.motorNames.map((name) => rangeMins[name]),
-    end_pos: config.motorNames.map((name) => rangeMaxes[name]),
-    calib_mode: config.calibModes,
-    motor_names: config.motorNames,
-  };
+  // Step 3: Set special range for wrist_roll (full turn motor)
+  rangeMins["wrist_roll"] = 0;
+  rangeMaxes["wrist_roll"] = 4095;
+
+  // Step 4: Write hardware position limits to motors (matching Python behavior)
+  await writeHardwarePositionLimits(config, rangeMins, rangeMaxes);
+
+  // Compile results in Python-compatible format
+  const results: CalibrationResults = {};
+
+  for (let i = 0; i < config.motorNames.length; i++) {
+    const motorName = config.motorNames[i];
+    const motorId = config.motorIds[i];
+
+    results[motorName] = {
+      id: motorId,
+      drive_mode: config.driveModes[i],
+      homing_offset: homingOffsets[motorName],
+      range_min: rangeMins[motorName],
+      range_max: rangeMaxes[motorName],
+    };
+  }
 
   return results;
 }
@@ -201,23 +279,201 @@ export async function verifyCalibration(
 }
 
 /**
+ * Reset homing offsets to 0 for all motors
+ * Mirrors Python reset_calibration() - critical step before calculating new offsets
+ * This ensures Present_Position reflects true physical position without existing offsets
+ */
+async function resetHomingOffsets(
+  config: SO100CalibrationConfig
+): Promise<void> {
+  for (let i = 0; i < config.motorIds.length; i++) {
+    const motorId = config.motorIds[i];
+    const motorName = config.motorNames[i];
+
+    try {
+      // Write 0 to Homing_Offset register using configurable address
+      const homingOffsetValue = 0;
+
+      // Create Write Homing_Offset packet using configurable address
+      const packet = Buffer.from([
+        0xff,
+        0xff, // Header
+        motorId, // Servo ID
+        0x05, // Length (Instruction + Address + Data + Checksum)
+        0x03, // Instruction: WRITE_DATA
+        config.protocol.homingOffsetAddress, // Configurable address instead of hardcoded 0x1f
+        homingOffsetValue & 0xff, // Data_L (low byte)
+        (homingOffsetValue >> 8) & 0xff, // Data_H (high byte)
+        0x00, // Checksum (will calculate)
+      ]);
+
+      // Calculate checksum using configurable address
+      const checksum =
+        ~(
+          motorId +
+          0x05 +
+          0x03 +
+          config.protocol.homingOffsetAddress +
+          (homingOffsetValue & 0xff) +
+          ((homingOffsetValue >> 8) & 0xff)
+        ) & 0xff;
+      packet[8] = checksum;
+
+      if (!config.port || !config.port.isOpen) {
+        throw new Error("Serial port not open");
+      }
+
+      // Send reset packet
+      await new Promise<void>((resolve, reject) => {
+        config.port.write(packet, (error) => {
+          if (error) {
+            reject(
+              new Error(
+                `Failed to reset homing offset for ${motorName}: ${error.message}`
+              )
+            );
+          } else {
+            resolve();
+          }
+        });
+      });
+
+      // Wait for response (silent unless error)
+      try {
+        await readData(config.port, 200);
+      } catch (error) {
+        // Silent - response not required for successful operation
+      }
+    } catch (error) {
+      throw new Error(
+        `Failed to reset homing offset for ${motorName}: ${
+          error instanceof Error ? error.message : error
+        }`
+      );
+    }
+
+    // Small delay between motor writes
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
+/**
  * Record homing offsets (current positions as center)
  * Mirrors Python bus.set_half_turn_homings()
+ *
+ * CRITICAL: Must reset existing homing offsets to 0 first (like Python does)
+ * CRITICAL: Must WRITE the new homing offsets to motors immediately (like Python does)
  */
 async function setHomingOffsets(
   config: SO100CalibrationConfig
 ): Promise<{ [motor: string]: number }> {
+  // CRITICAL: Reset existing homing offsets to 0 first (matching Python)
+  await resetHomingOffsets(config);
+
+  // Wait a moment for reset to take effect
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  // Now read positions (which will be true physical positions)
   const currentPositions = await readMotorPositions(config);
   const homingOffsets: { [motor: string]: number } = {};
 
   for (let i = 0; i < config.motorNames.length; i++) {
     const motorName = config.motorNames[i];
     const position = currentPositions[i];
-    const maxRes = 4095; // STS3215 resolution
-    homingOffsets[motorName] = position - Math.floor(maxRes / 2);
+
+    // Generic formula: pos - int((max_res - 1) / 2) using configurable resolution
+    const halfTurn = Math.floor((config.protocol.resolution - 1) / 2);
+    homingOffsets[motorName] = position - halfTurn;
   }
 
+  // CRITICAL: Write homing offsets to motors immediately (matching Python exactly)
+  // Python does: for motor, offset in homing_offsets.items(): self.write("Homing_Offset", motor, offset)
+  await writeHomingOffsetsToMotors(config, homingOffsets);
+
   return homingOffsets;
+}
+
+/**
+ * Write homing offsets to motor registers immediately
+ * Mirrors Python's immediate writing in set_half_turn_homings()
+ */
+async function writeHomingOffsetsToMotors(
+  config: SO100CalibrationConfig,
+  homingOffsets: { [motor: string]: number }
+): Promise<void> {
+  for (let i = 0; i < config.motorIds.length; i++) {
+    const motorId = config.motorIds[i];
+    const motorName = config.motorNames[i];
+    const homingOffset = homingOffsets[motorName];
+
+    try {
+      // Encode using sign-magnitude format (like Python)
+      const encodedOffset = encodeSignMagnitude(
+        homingOffset,
+        config.protocol.signMagnitudeBit
+      );
+
+      // Create Write Homing_Offset packet
+      const packet = Buffer.from([
+        0xff,
+        0xff, // Header
+        motorId, // Servo ID
+        0x05, // Length
+        0x03, // Instruction: WRITE_DATA
+        config.protocol.homingOffsetAddress, // Homing_Offset address
+        encodedOffset & 0xff, // Data_L (low byte)
+        (encodedOffset >> 8) & 0xff, // Data_H (high byte)
+        0x00, // Checksum (will calculate)
+      ]);
+
+      // Calculate checksum
+      const checksum =
+        ~(
+          motorId +
+          0x05 +
+          0x03 +
+          config.protocol.homingOffsetAddress +
+          (encodedOffset & 0xff) +
+          ((encodedOffset >> 8) & 0xff)
+        ) & 0xff;
+      packet[8] = checksum;
+
+      if (!config.port || !config.port.isOpen) {
+        throw new Error("Serial port not open");
+      }
+
+      // Send packet
+      await new Promise<void>((resolve, reject) => {
+        config.port.write(packet, (error) => {
+          if (error) {
+            reject(
+              new Error(
+                `Failed to write homing offset for ${motorName}: ${error.message}`
+              )
+            );
+          } else {
+            resolve();
+          }
+        });
+      });
+
+      // Wait for response (silent unless error)
+      try {
+        await readData(config.port, 200);
+      } catch (error) {
+        // Silent - response not required for successful operation
+      }
+    } catch (error) {
+      throw new Error(
+        `Failed to write homing offset for ${motorName}: ${
+          error instanceof Error ? error.message : error
+        }`
+      );
+    }
+
+    // Small delay between motor writes
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
 }
 
 /**
@@ -228,7 +484,6 @@ async function recordRangesOfMotion(config: SO100CalibrationConfig): Promise<{
   rangeMins: { [motor: string]: number };
   rangeMaxes: { [motor: string]: number };
 }> {
-  console.log("\n=== RECORDING RANGES OF MOTION ===");
   console.log(
     "Move all joints sequentially through their entire ranges of motion."
   );
@@ -239,13 +494,16 @@ async function recordRangesOfMotion(config: SO100CalibrationConfig): Promise<{
   const rangeMins: { [motor: string]: number } = {};
   const rangeMaxes: { [motor: string]: number } = {};
 
-  // Initialize with current positions
-  const initialPositions = await readMotorPositions(config);
+  // Read actual current positions (matching Python exactly)
+  // Python does: start_positions = self.sync_read("Present_Position", motors, normalize=False)
+  // mins = start_positions.copy(); maxes = start_positions.copy()
+  const startPositions = await readMotorPositions(config);
+
   for (let i = 0; i < config.motorNames.length; i++) {
     const motorName = config.motorNames[i];
-    const position = initialPositions[i];
-    rangeMins[motorName] = position;
-    rangeMaxes[motorName] = position;
+    const startPosition = startPositions[i];
+    rangeMins[motorName] = startPosition; // Use actual position, not hardcoded 2047
+    rangeMaxes[motorName] = startPosition; // Use actual position, not hardcoded 2047
   }
 
   let recording = true;
@@ -261,9 +519,6 @@ async function recordRangesOfMotion(config: SO100CalibrationConfig): Promise<{
     recording = false;
     rl.close();
   });
-
-  console.log("Recording started... (move the robot joints now)");
-  console.log("Live table will appear below - values update in real time!\n");
 
   // Continuous recording loop with live updates - THE LIVE UPDATING TABLE!
   while (recording) {
@@ -287,8 +542,7 @@ async function recordRangesOfMotion(config: SO100CalibrationConfig): Promise<{
       // Show real-time feedback every 3 reads for faster updates - LIVE TABLE UPDATE
       if (readCount % 3 === 0) {
         // Build the live table content
-        let liveTable = "=== LIVE POSITION RECORDING ===\n";
-        liveTable += `Readings: ${readCount} | Press ENTER to stop\n\n`;
+        let liveTable = `Readings: ${readCount}\n\n`;
         liveTable += "Motor Name       Current    Min      Max      Range\n";
         liveTable += "─".repeat(55) + "\n";
 
@@ -365,4 +619,115 @@ async function readData(
       resolve(data);
     });
   });
+}
+
+/**
+ * Write hardware position limits to motors
+ * Mirrors Python lerobot write_calibration() behavior where it writes:
+ * - Min_Position_Limit register with calibration.range_min
+ * - Max_Position_Limit register with calibration.range_max
+ * This physically constrains the motors to the calibrated ranges
+ */
+async function writeHardwarePositionLimits(
+  config: SO100CalibrationConfig,
+  rangeMins: { [motor: string]: number },
+  rangeMaxes: { [motor: string]: number }
+): Promise<void> {
+  for (let i = 0; i < config.motorIds.length; i++) {
+    const motorId = config.motorIds[i];
+    const motorName = config.motorNames[i];
+    const minLimit = rangeMins[motorName];
+    const maxLimit = rangeMaxes[motorName];
+
+    try {
+      // Write Min_Position_Limit register
+      await writeMotorRegister(
+        config,
+        motorId,
+        config.protocol.minPositionLimitAddress,
+        minLimit,
+        `Min_Position_Limit for ${motorName}`
+      );
+
+      // Small delay between writes
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      // Write Max_Position_Limit register
+      await writeMotorRegister(
+        config,
+        motorId,
+        config.protocol.maxPositionLimitAddress,
+        maxLimit,
+        `Max_Position_Limit for ${motorName}`
+      );
+
+      // Small delay between motors
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    } catch (error) {
+      throw new Error(
+        `Failed to write position limits for ${motorName}: ${
+          error instanceof Error ? error.message : error
+        }`
+      );
+    }
+  }
+}
+
+/**
+ * Generic function to write a 2-byte value to a motor register
+ * Used for both Min_Position_Limit and Max_Position_Limit
+ */
+async function writeMotorRegister(
+  config: SO100CalibrationConfig,
+  motorId: number,
+  registerAddress: number,
+  value: number,
+  description: string
+): Promise<void> {
+  // Create Write Register packet
+  const packet = Buffer.from([
+    0xff,
+    0xff, // Header
+    motorId, // Servo ID
+    0x05, // Length (Instruction + Address + Data + Checksum)
+    0x03, // Instruction: WRITE_DATA
+    registerAddress, // Register address
+    value & 0xff, // Data_L (low byte)
+    (value >> 8) & 0xff, // Data_H (high byte)
+    0x00, // Checksum (will calculate)
+  ]);
+
+  // Calculate checksum
+  const checksum =
+    ~(
+      motorId +
+      0x05 +
+      0x03 +
+      registerAddress +
+      (value & 0xff) +
+      ((value >> 8) & 0xff)
+    ) & 0xff;
+  packet[8] = checksum;
+
+  if (!config.port || !config.port.isOpen) {
+    throw new Error("Serial port not open");
+  }
+
+  // Send packet
+  await new Promise<void>((resolve, reject) => {
+    config.port.write(packet, (error) => {
+      if (error) {
+        reject(new Error(`Failed to write ${description}: ${error.message}`));
+      } else {
+        resolve();
+      }
+    });
+  });
+
+  // Wait for response (silent unless error)
+  try {
+    await readData(config.port, 200);
+  } catch (error) {
+    // Silent - response not required for successful operation
+  }
 }

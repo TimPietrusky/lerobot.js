@@ -205,3 +205,163 @@ lerobot/
 - **Baudrate Validation**: Only real devices will reveal communication problems
 - **User Flow Testing**: Test complete calibration workflows with actual hardware
 - **Port Management**: Ensure proper port cleanup between testing sessions
+
+### CRITICAL: Calibration Implementation Requirements
+
+#### Calibration File Format (Learned from SO-100 Implementation)
+
+- **NEVER use array-based format**: Calibration files must use motor names as keys, NOT arrays
+- **Python-Compatible Structure**: Each motor must be an object with `id`, `drive_mode`, `homing_offset`, `range_min`, `range_max`
+- **Wrong Format** (causes Python incompatibility):
+  ```json
+  {
+    "homing_offset": [47, 1013, -957, ...],
+    "drive_mode": [0, 0, 0, ...],
+    "motor_names": ["shoulder_pan", ...]
+  }
+  ```
+- **Correct Format** (Python-compatible):
+  ```json
+  {
+    "shoulder_pan": {
+      "id": 1,
+      "drive_mode": 0,
+      "homing_offset": 47,
+      "range_min": 985,
+      "range_max": 3085
+    }
+  }
+  ```
+
+#### Homing Offset Calibration Protocol (Critical for STS3215/Feetech Motors)
+
+- **MUST Reset Existing Offsets**: Before calculating new homing offsets, ALWAYS reset existing homing offsets to 0
+- **Python Reference**: Python's `set_half_turn_homings()` calls `reset_calibration()` first
+- **Missing Reset Causes**: Completely wrong homing offset values (~1000+ unit differences)
+- **Reset Protocol**: Write value 0 to Homing_Offset register (address 31) for each motor before reading positions
+- **Verification**: Ensure reset commands receive successful responses before proceeding
+
+#### STS3215 Sign-Magnitude Encoding
+
+- **Homing_Offset Uses Special Encoding**: Bit 11 is sign bit, lower 11 bits are magnitude
+- **Position Reads**: Some registers may need sign-magnitude decoding - verify against Python behavior
+- **Encoding Functions**: Implement `encodeSignMagnitude()` and `decodeSignMagnitude()` for protocol compatibility
+- **Common Symptom**: Values differing by ~2048 or ~4096 indicate sign-magnitude encoding issues
+
+#### Calibration Process Validation
+
+- **Same Neutral Position**: When comparing calibrations, ensure robot is in identical physical position
+- **Expected Accuracy**: Properly implemented calibration should match Python within 30 units
+- **Debug Protocol**: Log position values, reset confirmations, and calculation steps for troubleshooting
+- **Range Verification**: `wrist_roll` should always use full range (0-4095), other motors use recorded ranges
+
+#### Common Calibration Mistakes to Avoid
+
+1. **Skipping Homing Reset**: Leads to ~1000+ unit differences in homing offsets
+2. **Array-Based File Format**: Makes calibration files incompatible with Python lerobot
+3. **Ignoring Sign-Magnitude Encoding**: Causes specific motors (often wrist_roll) to have wrong values
+4. **Different Physical Positions**: Comparing calibrations done at different robot positions
+5. **Missing Motor ID Assignment**: Forgetting to assign correct motor IDs (1-6 for SO-100)
+
+#### Device-Agnostic Calibration Architecture
+
+- **No Hardcoded Device Values**: Calibration logic must be configurable for different robot types
+- **Configuration-Driven Protocol**: Motor IDs, register addresses, resolution, etc. should come from device config
+- **Extensible Design**: Adding new robot types should only require new config files, not core logic changes
+- **Example Bad Practice**: Hardcoding `const motorIds = [1,2,3,4,5,6]` in calibration logic
+- **Example Good Practice**: Using `config.motorIds` from device-specific configuration
+- **Protocol Abstraction**: Register addresses, resolution, encoding details should be configurable per device type
+
+#### CRITICAL: Calibration Sequence and Hardware State Management
+
+**The exact sequence of calibration operations is critical for Python compatibility. Getting this wrong causes major range/offset discrepancies.**
+
+##### The Correct Calibration Sequence (Matching Python Exactly)
+
+1. **Reset Existing Homing Offsets to 0**: Write 0 to all Homing_Offset registers
+2. **Read Physical Positions**: Get actual motor positions (will be raw, non-centered values)
+3. **Calculate New Homing Offsets**: `offset = position - (resolution-1)/2`
+4. **IMMEDIATELY Write Homing Offsets**: Write new offsets to motor registers **before range recording**
+5. **Read Positions for Range Init**: Now positions will appear centered (~2047) due to applied offsets
+6. **Record Range of Motion**: Use centered positions as starting min/max values
+7. **Write Hardware Position Limits**: Write `range_min`/`range_max` to motor limit registers
+
+##### Critical Implementation Details
+
+**Homing Offset Writing Must Be Immediate:**
+
+```typescript
+// WRONG - Only calculates, doesn't write to motors
+async function setHomingOffsets(config) {
+  const positions = await readMotorPositions(config);
+  const offsets = calculateOffsets(positions);
+  return offsets; // ❌ Not written to motors!
+}
+
+// CORRECT - Writes offsets to motors immediately
+async function setHomingOffsets(config) {
+  await resetHomingOffsets(config); // Reset first
+  const positions = await readMotorPositions(config);
+  const offsets = calculateOffsets(positions);
+  await writeHomingOffsetsToMotors(config, offsets); // ✅ Written immediately
+  return offsets;
+}
+```
+
+**Range Recording Initialization Must Read Actual Positions:**
+
+```typescript
+// WRONG - Hardcoded center values
+const rangeMins = {};
+const rangeMaxes = {};
+for (const motor of motors) {
+  rangeMins[motor] = 2047; // ❌ Hardcoded!
+  rangeMaxes[motor] = 2047;
+}
+
+// CORRECT - Read actual positions (now centered due to applied homing offsets)
+const startPositions = await readMotorPositions(config);
+const rangeMins = {};
+const rangeMaxes = {};
+for (let i = 0; i < motors.length; i++) {
+  rangeMins[motors[i]] = startPositions[i]; // ✅ Uses actual values
+  rangeMaxes[motors[i]] = startPositions[i];
+}
+```
+
+**Hardware Position Limits Must Be Written:**
+
+```typescript
+// Python writes these registers, so we must too
+await writeMotorRegister(config, motorId, MIN_POSITION_LIMIT_ADDR, range_min);
+await writeMotorRegister(config, motorId, MAX_POSITION_LIMIT_ADDR, range_max);
+```
+
+##### Why This Sequence Matters
+
+**Problem**: User moves robot to same physical position, but Python shows ~2047 and Node.js shows wildly different values (3013, 1200, etc.)
+
+**Root Cause**: Python applies homing offsets immediately, making subsequent position reads appear centered. Node.js was calculating offsets but not applying them, so position reads remained raw.
+
+**Evidence of Correct Implementation**: After fixing the sequence, Node.js and Python both show ~2047 for the same physical position, and final calibration ranges match within professional tolerances (±50 units).
+
+##### Register Addresses for STS3215 Motors
+
+```typescript
+const STS3215_REGISTERS = {
+  Present_Position: { address: 56, length: 2 },
+  Homing_Offset: { address: 31, length: 2 }, // Sign-magnitude encoded
+  Min_Position_Limit: { address: 9, length: 2 },
+  Max_Position_Limit: { address: 11, length: 2 },
+};
+```
+
+##### Common Sequence Mistakes That Cause Major Issues
+
+1. **Not Writing Homing Offsets**: Calculates but doesn't apply → position reads remain raw → wrong range initialization
+2. **Hardcoded Range Initialization**: Forces 2047 instead of reading actual positions → doesn't match Python behavior
+3. **Missing Hardware Limit Writing**: Python constrains motors, Node.js doesn't → different range recording behavior
+4. **Wrong Reset Timing**: Not resetting existing offsets first → accumulated offset errors
+5. **Skipping Intermediate Delays**: Not waiting for motor register writes to take effect → inconsistent state
+
+**This sequence debugging took extensive analysis to solve. Future implementations MUST follow this exact pattern to maintain Python compatibility.**
