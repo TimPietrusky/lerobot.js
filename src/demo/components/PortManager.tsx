@@ -9,6 +9,14 @@ import {
 } from "./ui/card";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Badge } from "./ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog";
 import { isWebSerialSupported } from "../../lerobot/web/calibrate";
 import type { ConnectedRobot } from "../types";
 
@@ -31,7 +39,17 @@ export function PortManager({
   const [isFindingPorts, setIsFindingPorts] = useState(false);
   const [findPortsLog, setFindPortsLog] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
-
+  const [confirmDeleteDialog, setConfirmDeleteDialog] = useState<{
+    open: boolean;
+    robotIndex: number;
+    robotName: string;
+    serialNumber: string;
+  }>({
+    open: false,
+    robotIndex: -1,
+    robotName: "",
+    serialNumber: "",
+  });
   // Load saved port data from localStorage on mount
   useEffect(() => {
     loadSavedPorts();
@@ -73,14 +91,74 @@ export function PortManager({
           // Check if already open
           if (port.readable !== null && port.writable !== null) {
             isConnected = true;
+            console.log("Port already open, reusing connection");
           } else {
-            // Auto-open paired robots
-            await port.open({ baudRate: 1000000 });
-            isConnected = true;
+            // Auto-open paired robots only if they have saved configuration
+            if (savedPort?.robotType && savedPort?.robotId) {
+              console.log(
+                `Auto-connecting to saved robot: ${savedPort.robotType} (${savedPort.robotId})`
+              );
+              await port.open({ baudRate: 1000000 });
+              isConnected = true;
+            } else {
+              console.log(
+                "Port found but no saved robot configuration, skipping auto-connect"
+              );
+              isConnected = false;
+            }
           }
         } catch (error) {
           console.log("Could not auto-connect to paired robot:", error);
           isConnected = false;
+        }
+
+        // Re-detect serial number for this port
+        let serialNumber = null;
+        let usbMetadata = null;
+
+        // Try to get USB device info to restore serial number
+        try {
+          // Get all USB devices and try to match with this serial port
+          const usbDevices = await navigator.usb.getDevices();
+          const portInfo = port.getInfo();
+
+          // Try to find matching USB device by vendor/product ID
+          const matchingDevice = usbDevices.find(
+            (device) =>
+              device.vendorId === portInfo.usbVendorId &&
+              device.productId === portInfo.usbProductId
+          );
+
+          if (matchingDevice) {
+            serialNumber =
+              matchingDevice.serialNumber ||
+              `${matchingDevice.vendorId}-${
+                matchingDevice.productId
+              }-${Date.now()}`;
+            usbMetadata = {
+              vendorId: `0x${matchingDevice.vendorId
+                .toString(16)
+                .padStart(4, "0")}`,
+              productId: `0x${matchingDevice.productId
+                .toString(16)
+                .padStart(4, "0")}`,
+              serialNumber: matchingDevice.serialNumber || "Generated ID",
+              manufacturerName: matchingDevice.manufacturerName || "Unknown",
+              productName: matchingDevice.productName || "Unknown",
+              usbVersionMajor: matchingDevice.usbVersionMajor,
+              usbVersionMinor: matchingDevice.usbVersionMinor,
+              deviceClass: matchingDevice.deviceClass,
+              deviceSubclass: matchingDevice.deviceSubclass,
+              deviceProtocol: matchingDevice.deviceProtocol,
+            };
+            console.log("✅ Restored USB metadata for port:", serialNumber);
+          }
+        } catch (usbError) {
+          console.log("⚠️ Could not restore USB metadata:", usbError);
+          // Generate fallback if no USB metadata available
+          serialNumber = `fallback-${Date.now()}-${Math.random()
+            .toString(36)
+            .substr(2, 9)}`;
         }
 
         restoredPorts.push({
@@ -89,6 +167,8 @@ export function PortManager({
           isConnected,
           robotType: savedPort?.robotType,
           robotId: savedPort?.robotId,
+          serialNumber: serialNumber!,
+          usbMetadata: usbMetadata || undefined,
         });
       }
 
@@ -223,18 +303,21 @@ export function PortManager({
           usbMetadata: usbMetadata || undefined,
         };
 
-        // Try to load saved robot info by serial number
-        try {
-          const savedRobotKey = `lerobot-robot-${serialNumber}`;
-          const savedData = localStorage.getItem(savedRobotKey);
-          if (savedData) {
-            const parsed = JSON.parse(savedData);
-            newRobot.robotType = parsed.robotType;
-            newRobot.robotId = parsed.robotId;
-            console.log("📋 Loaded saved robot configuration:", parsed);
+        // Try to load saved robot info by serial number using unified storage
+        if (serialNumber) {
+          try {
+            const { getRobotConfig } = await import("../lib/unified-storage");
+            const savedConfig = getRobotConfig(serialNumber);
+            if (savedConfig) {
+              newRobot.robotType = savedConfig.robotType as
+                | "so100_follower"
+                | "so100_leader";
+              newRobot.robotId = savedConfig.robotId;
+              console.log("📋 Loaded saved robot configuration:", savedConfig);
+            }
+          } catch (error) {
+            console.warn("Failed to load saved robot data:", error);
           }
-        } catch (error) {
-          console.warn("Failed to load saved robot data:", error);
         }
 
         onConnectedRobotsChange([...connectedRobots, newRobot]);
@@ -269,19 +352,107 @@ export function PortManager({
   };
 
   const handleDisconnect = async (index: number) => {
+    const portInfo = connectedRobots[index];
+    const robotName = portInfo.robotId || portInfo.name;
+    const serialNumber = portInfo.serialNumber || "unknown";
+
+    // Show confirmation dialog
+    setConfirmDeleteDialog({
+      open: true,
+      robotIndex: index,
+      robotName,
+      serialNumber,
+    });
+  };
+
+  const confirmDelete = async () => {
+    const { robotIndex } = confirmDeleteDialog;
+    const portInfo = connectedRobots[robotIndex];
+
+    setConfirmDeleteDialog({
+      open: false,
+      robotIndex: -1,
+      robotName: "",
+      serialNumber: "",
+    });
+
     try {
-      const portInfo = connectedRobots[index];
+      // Close the serial port connection
       if (portInfo.isConnected) {
         await portInfo.port.close();
       }
 
-      const updatedRobots = connectedRobots.filter((_, i) => i !== index);
+      // Delete from unified storage if serial number is available
+      if (portInfo.serialNumber) {
+        try {
+          const { getUnifiedKey } = await import("../lib/unified-storage");
+          const unifiedKey = getUnifiedKey(portInfo.serialNumber);
+
+          // Remove unified storage data
+          localStorage.removeItem(unifiedKey);
+          console.log(`🗑️ Deleted unified robot data: ${unifiedKey}`);
+
+          // Also clean up any old format keys for this robot (if they exist)
+          const oldKeys = [
+            `lerobot-robot-${portInfo.serialNumber}`,
+            `lerobot-calibration-${portInfo.serialNumber}`,
+          ];
+
+          // Try to find old calibration key by checking stored robot config
+          if (portInfo.robotType && portInfo.robotId) {
+            oldKeys.push(
+              `lerobot_calibration_${portInfo.robotType}_${portInfo.robotId}`
+            );
+          }
+
+          oldKeys.forEach((key) => {
+            if (localStorage.getItem(key)) {
+              localStorage.removeItem(key);
+              console.log(`🧹 Cleaned up old key: ${key}`);
+            }
+          });
+        } catch (error) {
+          console.warn("Failed to delete unified storage data:", error);
+
+          // Fallback: try to delete old format keys directly
+          if (portInfo.robotType && portInfo.robotId) {
+            const oldKeys = [
+              `lerobot-robot-${portInfo.serialNumber}`,
+              `lerobot-calibration-${portInfo.serialNumber}`,
+              `lerobot_calibration_${portInfo.robotType}_${portInfo.robotId}`,
+            ];
+
+            oldKeys.forEach((key) => {
+              if (localStorage.getItem(key)) {
+                localStorage.removeItem(key);
+                console.log(`🧹 Removed old format key: ${key}`);
+              }
+            });
+          }
+        }
+      }
+
+      // Remove from UI
+      const updatedRobots = connectedRobots.filter((_, i) => i !== robotIndex);
       onConnectedRobotsChange(updatedRobots);
+
+      console.log(
+        `✅ Robot "${confirmDeleteDialog.robotName}" permanently removed from system`
+      );
     } catch (error) {
       setError(
-        error instanceof Error ? error.message : "Failed to disconnect port"
+        error instanceof Error ? error.message : "Failed to remove robot"
       );
     }
+  };
+
+  const cancelDelete = () => {
+    setConfirmDeleteDialog({
+      open: false,
+      robotIndex: -1,
+      robotName: "",
+      serialNumber: "",
+    });
   };
 
   const handleUpdatePortInfo = (
@@ -293,24 +464,24 @@ export function PortManager({
       if (i === index) {
         const updatedRobot = { ...robot, robotType, robotId };
 
-        // Save robot configuration to localStorage using serial number
+        // Save robot configuration using unified storage
         if (updatedRobot.serialNumber) {
-          try {
-            const robotKey = `lerobot-robot-${updatedRobot.serialNumber}`;
-            const robotData = {
-              robotType,
-              robotId,
-              serialNumber: updatedRobot.serialNumber,
-              lastUpdated: new Date().toISOString(),
-            };
-            localStorage.setItem(robotKey, JSON.stringify(robotData));
-            console.log(
-              "💾 Saved robot configuration for:",
-              updatedRobot.serialNumber
-            );
-          } catch (error) {
-            console.warn("Failed to save robot configuration:", error);
-          }
+          import("../lib/unified-storage")
+            .then(({ saveRobotConfig }) => {
+              saveRobotConfig(
+                updatedRobot.serialNumber!,
+                robotType,
+                robotId,
+                updatedRobot.usbMetadata
+              );
+              console.log(
+                "💾 Saved robot configuration for:",
+                updatedRobot.serialNumber
+              );
+            })
+            .catch((error) => {
+              console.warn("Failed to save robot configuration:", error);
+            });
         }
 
         return updatedRobot;
@@ -519,6 +690,61 @@ export function PortManager({
           </div>
         </div>
       </CardContent>
+
+      {/* Confirmation Dialog */}
+      <Dialog open={confirmDeleteDialog.open} onOpenChange={cancelDelete}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>🗑️ Permanently Delete Robot Data?</DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. All robot data will be permanently
+              deleted.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="p-4 bg-red-50 rounded-lg border border-red-200">
+              <div className="font-medium text-red-900 mb-2">
+                Robot Information:
+              </div>
+              <div className="text-sm text-red-800 space-y-1">
+                <div>
+                  • Name:{" "}
+                  <span className="font-mono">
+                    {confirmDeleteDialog.robotName}
+                  </span>
+                </div>
+                <div>
+                  • Serial:{" "}
+                  <span className="font-mono">
+                    {confirmDeleteDialog.serialNumber}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 bg-red-50 rounded-lg border border-red-200">
+              <div className="font-medium text-red-900 mb-2">
+                This will permanently delete:
+              </div>
+              <div className="text-sm text-red-800 space-y-1">
+                <div>• Robot configuration</div>
+                <div>• Calibration data</div>
+                <div>• All saved settings</div>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={cancelDelete}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmDelete}>
+              Delete Forever
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
@@ -549,22 +775,38 @@ function PortCard({
   const [portMetadata, setPortMetadata] = useState<any>(null);
   const [showDeviceInfo, setShowDeviceInfo] = useState(false);
 
-  // Check for calibration in localStorage using serial number
+  // Check for calibration using unified storage
   const getCalibrationStatus = () => {
-    if (!portInfo.serialNumber) return null;
+    // Use the same serial number logic as calibration: prefer main serialNumber, fallback to USB metadata, then "unknown"
+    const serialNumber =
+      portInfo.serialNumber || portInfo.usbMetadata?.serialNumber || "unknown";
 
-    const calibrationKey = `lerobot-calibration-${portInfo.serialNumber}`;
     try {
-      const saved = localStorage.getItem(calibrationKey);
-      if (saved) {
-        const calibrationData = JSON.parse(saved);
-        return {
-          timestamp: calibrationData.timestamp,
-          readCount: calibrationData.readCount,
-        };
+      // Use unified storage system with automatic migration
+      import("../lib/unified-storage")
+        .then(({ getCalibrationStatus }) => {
+          const status = getCalibrationStatus(serialNumber);
+          return status;
+        })
+        .catch((error) => {
+          console.warn("Failed to load unified calibration data:", error);
+          return null;
+        });
+
+      // For immediate synchronous return, try to get existing unified data first
+      const unifiedKey = `lerobotjs-${serialNumber}`;
+      const existing = localStorage.getItem(unifiedKey);
+      if (existing) {
+        const data = JSON.parse(existing);
+        if (data.calibration?.metadata) {
+          return {
+            timestamp: data.calibration.metadata.timestamp,
+            readCount: data.calibration.metadata.readCount,
+          };
+        }
       }
     } catch (error) {
-      console.warn("Failed to read calibration from localStorage:", error);
+      console.warn("Failed to read calibration from unified storage:", error);
     }
     return null;
   };
@@ -816,11 +1058,6 @@ function PortCard({
           <Badge variant={portInfo.isConnected ? "default" : "outline"}>
             {portInfo.isConnected ? "Connected" : "Available"}
           </Badge>
-          {portInfo.usbMetadata && (
-            <Badge variant="outline" className="text-xs">
-              {portInfo.usbMetadata.manufacturerName}
-            </Badge>
-          )}
         </div>
         <Button variant="destructive" size="sm" onClick={onDisconnect}>
           Remove

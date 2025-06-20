@@ -33,6 +33,8 @@
     "install-global": "pnpm run build && npm link"
   },
   "dependencies": {
+    "@radix-ui/react-dialog": "^1.1.14",
+    "@radix-ui/react-progress": "^1.1.7",
     "log-update": "^6.1.0",
     "serialport": "^12.0.0"
   },

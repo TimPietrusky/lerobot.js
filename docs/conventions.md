@@ -48,17 +48,35 @@
 
 ## Architecture Principles
 
-### 1. Python lerobot Faithfulness (Primary Principle)
+### 1. Platform-Appropriate Design Philosophy
 
-**lerobot.js must maintain UX/API compatibility with Python lerobot**
+**Each platform should leverage its strengths while maintaining core robotics compatibility**
+
+#### Node.js: Python lerobot Faithfulness
 
 - **Identical Commands**: `npx lerobot find-port` matches `python -m lerobot.find_port`
 - **Same Terminology**: Use "MotorsBus", not "robot arms" - keep Python's exact wording
 - **Matching Output**: Error messages, prompts, and flow identical to Python version
 - **Familiar Workflows**: Python lerobot users should feel immediately at home
-- **No "Improvements"**: Resist urge to add features/UX that Python version doesn't have
+- **CLI Compatibility**: Direct migration path from Python CLI
 
-> **Why?** Users are already trained on Python lerobot. Our goal is seamless migration to TypeScript, not learning a new tool.
+> **Why for Node.js?** CLI users are already trained on Python lerobot. Node.js provides seamless migration to TypeScript without learning new patterns.
+
+#### Web: Modern Robotics UX
+
+- **Superior User Experience**: Leverage browser capabilities for better robotics interfaces
+- **Real-time Visual Feedback**: Live motor position displays, progress indicators, interactive calibration
+- **Professional Web UI**: Modern component libraries, responsive design, accessibility
+- **Browser-Native Patterns**: Use web standards like dialogs, forms, notifications appropriately
+- **Enhanced Workflows**: Improve upon CLI limitations with graphical interfaces
+
+> **Why for Web?** Web platforms can provide significantly better UX than CLI tools. Users expect modern, intuitive interfaces when using browser applications.
+
+#### Shared Core: Robotics Protocol Compatibility
+
+- **Identical Hardware Communication**: Same motor protocols, timing, calibration algorithms
+- **Compatible Data Formats**: Calibration files work across all platforms
+- **Consistent Robotics Logic**: Motor control, kinematics, safety systems identical
 
 ### 2. Modular Design
 
@@ -123,16 +141,33 @@ lerobot/
 
 ### Implementation Philosophy
 
+#### Node.js Development
+
 - **Python First**: When in doubt, check how Python lerobot does it
-- **Port, Don't Innovate**: Direct ports are better than clever improvements
-- **User Expectations**: Maintain the exact experience Python users expect
+- **Direct Ports**: Mirror Python implementation for CLI compatibility
+- **User Expectations**: Maintain exact experience Python CLI users expect
 - **Terminology Consistency**: Use Python lerobot's exact naming and messaging
+
+#### Web Development
+
+- **Hardware Logic First**: Reuse Node.js's proven robotics protocols and algorithms
+- **UX Innovation**: Improve upon CLI limitations with modern web interfaces
+- **User Expectations**: Provide intuitive, visual experiences that exceed CLI capabilities
+- **Web Standards**: Follow browser conventions and accessibility guidelines
 
 ### Development Process
 
+#### Node.js Process
+
 - **Python Reference**: Always check Python lerobot implementation first
-- **UX Matching**: Test that commands, outputs, and workflows match exactly
+- **CLI Matching**: Test that commands, outputs, and workflows match exactly
 - **User Story Validation**: Validate against real Python lerobot users
+
+#### Web Process
+
+- **Hardware Foundation**: Start with Node.js robotics logic as proven base
+- **UX Enhancement**: Design interfaces that provide better experience than CLI
+- **User Testing**: Validate with both robotics experts and general web users
 
 ### Testing Strategy
 
@@ -165,9 +200,166 @@ lerobot/
 - **Hardware**: Platform-specific libraries for device access
 - **Development**: Vitest, ESLint, Prettier
 
-## Hardware Implementation Lessons
+## Platform-Specific Implementation
 
-### Critical Hardware Compatibility
+### Node.js Implementation (Python-Compatible Foundation)
+
+**Node.js serves as our Python-compatible foundation - closest to original lerobot behavior**
+
+#### Core Principles for Node.js
+
+- **Direct Python Ports**: Mirror Python lerobot APIs and workflows exactly
+- **System-Level Access**: Leverage Node.js's full system capabilities
+- **Performance Priority**: Direct hardware access without browser security constraints
+- **CLI Compatibility**: Commands should feel identical to Python lerobot CLI
+
+#### Node.js Hardware Stack
+
+- **Serial Communication**: `serialport` package for direct hardware access
+- **Data Types**: Node.js Buffer API for binary communication
+- **File System**: Direct fs access for calibration files and datasets
+- **Port Discovery**: Programmatic port enumeration without user dialogs
+- **Process Management**: Direct process control and system integration
+
+### Web Implementation (Modern Robotics Interface)
+
+**Web provides superior robotics UX by building on Node.js's proven hardware protocols**
+
+#### Core Principles for Web
+
+- **Hardware Protocol Reuse**: Leverage Node.js's proven motor communication and calibration algorithms
+- **Superior User Experience**: Create intuitive, visual interfaces that surpass CLI limitations
+- **Browser-Native Design**: Use modern web patterns, components, and interactions appropriately
+- **Real-time Capabilities**: Provide live feedback and interactive control impossible in CLI
+- **Professional Quality**: Match or exceed commercial robotics software interfaces
+
+#### Critical Web-Specific Adaptations
+
+##### 1. Serial Communication Adaptation
+
+- **Foundation**: Reuse Node.js Feetech protocol timing and packet structures
+- **API Translation**:
+
+  ```typescript
+  // Node.js (serialport)
+  port.on("data", callback);
+
+  // Web (Web Serial API)
+  const reader = port.readable.getReader();
+  const { value } = await reader.read();
+  ```
+
+- **Browser Constraints**: Promise-based instead of event-based, user permission required
+- **Timing Differences**: 10ms write-to-read delays, different buffer management
+
+##### 2. Data Type Adaptation
+
+- **Node.js**: `Buffer` API for binary data
+- **Web**: `Uint8Array` for browser compatibility
+- **Translation Pattern**:
+
+  ```typescript
+  // Node.js
+  const packet = Buffer.from([0xff, 0xff, motorId]);
+
+  // Web
+  const packet = new Uint8Array([0xff, 0xff, motorId]);
+  ```
+
+##### 3. Storage Strategy Adaptation
+
+- **Node.js**: Direct file system access (`fs.writeFileSync`)
+- **Web**: Browser storage APIs (`localStorage`, `IndexedDB`)
+- **Device Persistence**:
+  - **Node.js**: File-based device configs
+  - **Web**: Hardware serial numbers + `WebUSB.getDevices()` for auto-restoration
+
+##### 4. Device Discovery Adaptation
+
+- **Node.js**: Programmatic port listing (`SerialPort.list()`)
+- **Web**: User-initiated port selection (`navigator.serial.requestPort()`)
+- **Auto-Reconnection**:
+  - **Node.js**: Automatic based on saved port paths
+  - **Web**: WebUSB device matching + Web Serial port restoration
+
+##### 5. UI Framework Integration
+
+- **Node.js**: CLI-based interaction (inquirer, chalk)
+- **Web**: React components with real-time hardware data binding
+- **Critical Challenges Solved**:
+  - **React.StrictMode**: Disabled for hardware interfaces (`src/demo/main.tsx`)
+  - **Concurrent Access**: Single controlled serial operation via custom hooks
+  - **Real-time Updates**: Hardware callbacks → React state updates
+  - **Professional UI**: shadcn Dialog, Card, Button components for robotics interfaces
+- **Architecture Pattern**:
+  ```typescript
+  // Custom hook for hardware state management
+  function useCalibration(robot: ConnectedRobot) {
+    const [controller, setController] =
+      useState<WebCalibrationController | null>(null);
+    // Stable dependencies to prevent infinite re-renders
+    const startCalibration = useCallback(async () => {
+      /* ... */
+    }, [dependencies]);
+  }
+  ```
+
+#### Web Implementation Blockers Solved
+
+**These blockers were identified during SO-100 web calibration development:**
+
+1. **Web Serial Communication Protocol**
+
+   - **Issue**: Browser timing differs from Node.js serialport
+   - **Solution**: Adapt Node.js Feetech patterns with Promise.race timeouts
+   - **Pattern**: Reuse protocol logic, translate API calls
+
+2. **React + Hardware Integration**
+
+   - **Issue**: React lifecycle conflicts with hardware state
+   - **Solution**: Controlled serial access, proper useCallback dependencies
+   - **Pattern**: Hardware operations outside React render cycle
+
+3. **Real-Time Hardware Display**
+
+   - **Issue**: UI showing calculated values instead of live positions
+   - **Solution**: Hardware callbacks pass current positions to React
+   - **Pattern**: Hardware → callback → React state → UI update
+
+4. **Browser Storage for Hardware**
+
+   - **Issue**: Multiple localStorage keys causing state inconsistency (e.g., `lerobot-robot-{serial}`, `lerobot-calibration-{serial}`, `lerobot_calibration_{type}_{id}`)
+   - **Solution**: Unified storage system with automatic migration from old formats
+   - **Implementation**:
+
+     ```typescript
+     // Unified key format
+     const key = `lerobotjs-${serialNumber}`
+
+     // Unified data structure
+     {
+       device_info: { serialNumber, robotType, robotId, usbMetadata },
+       calibration: { motor_data..., metadata: { timestamp, readCount } }
+     }
+     ```
+
+   - **Auto-Migration**: Automatically consolidates scattered old keys into unified format
+   - **Pattern**: Single source of truth per physical device
+
+5. **Device Persistence Across Sessions**
+
+   - **Issue**: Serial numbers lost on page reload
+   - **Solution**: WebUSB `getDevices()` + automatic device restoration
+   - **Pattern**: Hardware ID persistence without user re-permission
+
+6. **Professional Hardware UI**
+   - **Issue**: Browser alerts inappropriate for robotics interfaces
+   - **Solution**: shadcn Dialog components with device information
+   - **Pattern**: Professional component library for hardware control
+
+### Hardware Implementation Lessons (Universal Patterns)
+
+#### Critical Hardware Compatibility (Both Platforms)
 
 #### Baudrate Configuration
 
