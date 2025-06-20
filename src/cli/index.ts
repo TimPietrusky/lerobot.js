@@ -9,6 +9,7 @@
 
 import { findPort } from "../lerobot/node/find_port.js";
 import { main as calibrateMain } from "../lerobot/node/calibrate.js";
+import { main as teleoperateMain } from "../lerobot/node/teleoperate.js";
 
 /**
  * Show usage information
@@ -21,11 +22,15 @@ function showUsage() {
     "  find-port    Find the USB port associated with your MotorsBus"
   );
   console.log("  calibrate    Recalibrate your device (robot or teleoperator)");
+  console.log("  teleoperate  Control a robot using keyboard input");
   console.log("");
   console.log("Examples:");
   console.log("  lerobot find-port");
   console.log(
     "  lerobot calibrate --robot.type=so100_follower --robot.port=COM4 --robot.id=my_follower_arm"
+  );
+  console.log(
+    "  lerobot teleoperate --robot.type=so100_follower --robot.port=COM4 --teleop.type=keyboard"
   );
   console.log("");
 }
@@ -53,6 +58,12 @@ async function main() {
         // Pass remaining arguments to calibrate command
         const calibrateArgs = args.slice(1);
         await calibrateMain(calibrateArgs);
+        break;
+
+      case "teleoperate":
+        // Pass remaining arguments to teleoperate command
+        const teleoperateArgs = args.slice(1);
+        await teleoperateMain(teleoperateArgs);
         break;
 
       case "help":

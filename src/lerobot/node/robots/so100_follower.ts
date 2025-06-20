@@ -82,6 +82,148 @@ export class SO100Follower extends Robot {
   }
 
   /**
+   * Read current motor positions as a record with motor names
+   * For teleoperation use
+   */
+  async getMotorPositions(): Promise<Record<string, number>> {
+    const positions = await this.readMotorPositions();
+    const motorNames = [
+      "shoulder_pan",
+      "shoulder_lift",
+      "elbow_flex",
+      "wrist_flex",
+      "wrist_roll",
+      "gripper",
+    ];
+
+    const result: Record<string, number> = {};
+    for (let i = 0; i < motorNames.length; i++) {
+      result[motorNames[i]] = positions[i];
+    }
+    return result;
+  }
+
+  /**
+   * Get calibration data for teleoperation
+   * Returns position limits and offsets from calibration file
+   */
+  getCalibrationLimits(): Record<string, { min: number; max: number }> {
+    if (!this.isCalibrated || !this.calibration) {
+      console.warn("No calibration data available, using default limits");
+      // Default STS3215 limits as fallback
+      return {
+        shoulder_pan: { min: 985, max: 3085 },
+        shoulder_lift: { min: 1200, max: 2800 },
+        elbow_flex: { min: 1000, max: 3000 },
+        wrist_flex: { min: 1100, max: 2900 },
+        wrist_roll: { min: 0, max: 4095 }, // Full rotation motor
+        gripper: { min: 1800, max: 2300 },
+      };
+    }
+
+    // Extract limits from calibration data (matches Python format)
+    const limits: Record<string, { min: number; max: number }> = {};
+    for (const [motorName, calibData] of Object.entries(this.calibration)) {
+      if (
+        calibData &&
+        typeof calibData === "object" &&
+        "range_min" in calibData &&
+        "range_max" in calibData
+      ) {
+        limits[motorName] = {
+          min: Number(calibData.range_min),
+          max: Number(calibData.range_max),
+        };
+      }
+    }
+
+    return limits;
+  }
+
+  /**
+   * Set motor positions from a record with motor names
+   * For teleoperation use
+   */
+  async setMotorPositions(positions: Record<string, number>): Promise<void> {
+    const motorNames = [
+      "shoulder_pan",
+      "shoulder_lift",
+      "elbow_flex",
+      "wrist_flex",
+      "wrist_roll",
+      "gripper",
+    ];
+    const motorIds = [1, 2, 3, 4, 5, 6]; // SO-100 has servo IDs 1-6
+
+    for (let i = 0; i < motorNames.length; i++) {
+      const motorName = motorNames[i];
+      const motorId = motorIds[i];
+      const position = positions[motorName];
+
+      if (position !== undefined) {
+        await this.writeMotorPosition(motorId, position);
+      }
+    }
+  }
+
+  /**
+   * Write position to a single motor
+   * Implements STS3215 WRITE_DATA command for position control
+   */
+  private async writeMotorPosition(
+    motorId: number,
+    position: number
+  ): Promise<void> {
+    if (!this.port || !this.port.isOpen) {
+      throw new Error("Serial port not open");
+    }
+
+    // Clamp position to valid range
+    const clampedPosition = Math.max(0, Math.min(4095, Math.round(position)));
+
+    // Create STS3215 Write Position packet
+    // Format: [0xFF, 0xFF, ID, Length, Instruction, Address, Data_L, Data_H, Checksum]
+    // Goal_Position address for STS3215 is 42 (0x2A), length 2 bytes
+    const packet = Buffer.from([
+      0xff,
+      0xff, // Header
+      motorId, // Servo ID
+      0x05, // Length (Instruction + Address + Data_L + Data_H + Checksum)
+      0x03, // Instruction: WRITE_DATA
+      0x2a, // Address: Goal_Position (42)
+      clampedPosition & 0xff, // Data_L (low byte)
+      (clampedPosition >> 8) & 0xff, // Data_H (high byte)
+      0x00, // Checksum (will calculate)
+    ]);
+
+    // Calculate checksum: ~(ID + Length + Instruction + Address + Data_L + Data_H) & 0xFF
+    const checksum =
+      ~(
+        motorId +
+        0x05 +
+        0x03 +
+        0x2a +
+        (clampedPosition & 0xff) +
+        ((clampedPosition >> 8) & 0xff)
+      ) & 0xff;
+    packet[8] = checksum;
+
+    // Send write position packet
+    await new Promise<void>((resolve, reject) => {
+      this.port!.write(packet, (error) => {
+        if (error) {
+          reject(new Error(`Failed to send write packet: ${error.message}`));
+        } else {
+          resolve();
+        }
+      });
+    });
+
+    // Small delay to allow servo to process command
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  }
+
+  /**
    * Read current motor positions
    * Implements basic STS3215 servo protocol to read actual positions
    */
@@ -153,7 +295,14 @@ export class SO100Follower extends Robot {
               // Extract 16-bit position from Data_L and Data_H
               const position = response[5] | (response[6] << 8);
               motorPositions.push(position);
-              console.log(`    ${motorName}: ${position} (0-4095 range)`);
+
+              // Show calibrated range if available
+              const calibratedLimits = this.getCalibrationLimits();
+              const limits = calibratedLimits[motorName];
+              const rangeText = limits
+                ? `(${limits.min}-${limits.max} calibrated)`
+                : `(0-4095 raw)`;
+              console.log(`    ${motorName}: ${position} ${rangeText}`);
             } else {
               console.warn(
                 `    ${motorName}: Error response (error code: ${error})`

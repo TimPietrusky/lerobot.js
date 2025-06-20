@@ -6,6 +6,7 @@
 
 import { SerialPort } from "serialport";
 import { mkdir, writeFile } from "fs/promises";
+import { existsSync, readFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import type { RobotConfig } from "./config.js";
 import { getCalibrationDir, ROBOTS } from "../constants.js";
@@ -16,6 +17,8 @@ export abstract class Robot {
   protected calibrationDir: string;
   protected calibrationPath: string;
   protected name: string;
+  protected calibration: any = {}; // Loaded calibration data
+  protected isCalibrated: boolean = false;
 
   constructor(config: RobotConfig) {
     this.config = config;
@@ -29,6 +32,9 @@ export abstract class Robot {
     // Use robot ID or type as filename
     const robotId = config.id || this.name;
     this.calibrationPath = join(this.calibrationDir, `${robotId}.json`);
+
+    // Auto-load calibration if it exists (like Python version)
+    this.loadCalibration();
   }
 
   /**
@@ -98,7 +104,11 @@ export abstract class Robot {
    */
   protected async saveCalibration(calibrationData: any): Promise<void> {
     // Ensure calibration directory exists
-    await mkdir(this.calibrationDir, { recursive: true });
+    try {
+      mkdirSync(this.calibrationDir, { recursive: true });
+    } catch (error) {
+      // Directory might already exist, that's fine
+    }
 
     // Save calibration data as JSON
     await writeFile(
@@ -107,6 +117,34 @@ export abstract class Robot {
     );
 
     console.log(`Configuration saved to: ${this.calibrationPath}`);
+  }
+
+  /**
+   * Load calibration data from JSON file
+   * Mirrors Python's _load_calibration()
+   */
+  protected loadCalibration(): void {
+    try {
+      if (existsSync(this.calibrationPath)) {
+        const calibrationData = readFileSync(this.calibrationPath, "utf8");
+        this.calibration = JSON.parse(calibrationData);
+        this.isCalibrated = true;
+        console.log(`✅ Loaded calibration from: ${this.calibrationPath}`);
+      } else {
+        console.log(
+          `⚠️  No calibration file found at: ${this.calibrationPath}`
+        );
+        this.isCalibrated = false;
+      }
+    } catch (error) {
+      console.warn(
+        `Failed to load calibration: ${
+          error instanceof Error ? error.message : error
+        }`
+      );
+      this.calibration = {};
+      this.isCalibrated = false;
+    }
   }
 
   /**

@@ -29,6 +29,7 @@
     "preview": "vite preview",
     "cli:find-port": "tsx src/cli/index.ts find-port",
     "cli:calibrate": "tsx src/cli/index.ts calibrate",
+    "cli:teleoperate": "tsx src/cli/index.ts teleoperate",
     "prepublishOnly": "pnpm run build",
     "install-global": "pnpm run build && npm link"
   },

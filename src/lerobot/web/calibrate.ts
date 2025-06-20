@@ -782,7 +782,7 @@ export async function saveCalibrationResults(
   // Try to save using unified storage system
   try {
     const { saveCalibrationData } = await import(
-      "../../demo/lib/unified-storage"
+      "../../demo/lib/unified-storage.js"
     );
     saveCalibrationData(serialNumber, fullCalibrationData, metadata);
     console.log(
