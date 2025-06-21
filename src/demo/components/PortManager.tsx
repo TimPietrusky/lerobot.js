@@ -28,12 +28,14 @@ interface PortManagerProps {
     robotType: "so100_follower" | "so100_leader",
     robotId: string
   ) => void;
+  onTeleoperate?: (robot: ConnectedRobot) => void;
 }
 
 export function PortManager({
   connectedRobots,
   onConnectedRobotsChange,
   onCalibrate,
+  onTeleoperate,
 }: PortManagerProps) {
   const [isConnecting, setIsConnecting] = useState(false);
   const [isFindingPorts, setIsFindingPorts] = useState(false);
@@ -55,68 +57,18 @@ export function PortManager({
     loadSavedPorts();
   }, []);
 
-  // Save port data to localStorage whenever connectedPorts changes
-  useEffect(() => {
-    savePortsToStorage();
-  }, [connectedRobots]);
+  // Note: Robot data is now automatically saved to unified storage when robot config is updated
 
   const loadSavedPorts = async () => {
     try {
-      const saved = localStorage.getItem("lerobot-ports");
-      if (!saved) return;
-
-      const savedData = JSON.parse(saved);
       const existingPorts = await navigator.serial.getPorts();
-
       const restoredPorts: ConnectedRobot[] = [];
 
       for (const port of existingPorts) {
-        // Find saved data by matching port info instead of display name
-        const portInfo = port.getInfo();
-        const savedPort = savedData.find((p: any) => {
-          // Try to match by USB vendor/product ID if available
-          if (portInfo.usbVendorId && portInfo.usbProductId) {
-            return (
-              p.usbVendorId === portInfo.usbVendorId &&
-              p.usbProductId === portInfo.usbProductId
-            );
-          }
-          // Fallback to name matching
-          return p.name === getPortDisplayName(port);
-        });
-
-        // Auto-connect to paired robots
-        let isConnected = false;
-        try {
-          // Check if already open
-          if (port.readable !== null && port.writable !== null) {
-            isConnected = true;
-            console.log("Port already open, reusing connection");
-          } else {
-            // Auto-open paired robots only if they have saved configuration
-            if (savedPort?.robotType && savedPort?.robotId) {
-              console.log(
-                `Auto-connecting to saved robot: ${savedPort.robotType} (${savedPort.robotId})`
-              );
-              await port.open({ baudRate: 1000000 });
-              isConnected = true;
-            } else {
-              console.log(
-                "Port found but no saved robot configuration, skipping auto-connect"
-              );
-              isConnected = false;
-            }
-          }
-        } catch (error) {
-          console.log("Could not auto-connect to paired robot:", error);
-          isConnected = false;
-        }
-
-        // Re-detect serial number for this port
+        // Get USB device metadata to determine serial number
         let serialNumber = null;
         let usbMetadata = null;
 
-        // Try to get USB device info to restore serial number
         try {
           // Get all USB devices and try to match with this serial port
           const usbDevices = await navigator.usb.getDevices();
@@ -161,12 +113,80 @@ export function PortManager({
             .substr(2, 9)}`;
         }
 
+        // Load robot configuration from unified storage
+        let robotType: "so100_follower" | "so100_leader" | undefined;
+        let robotId: string | undefined;
+        let shouldAutoConnect = false;
+
+        if (serialNumber) {
+          try {
+            const { getUnifiedRobotData } = await import(
+              "../lib/unified-storage"
+            );
+            const unifiedData = getUnifiedRobotData(serialNumber);
+            if (unifiedData?.device_info) {
+              robotType = unifiedData.device_info.robotType;
+              robotId = unifiedData.device_info.robotId;
+              shouldAutoConnect = true;
+              console.log(
+                `📋 Loaded robot config from unified storage: ${robotType} (${robotId})`
+              );
+            }
+          } catch (error) {
+            console.warn("Failed to load unified robot data:", error);
+          }
+        }
+
+        // Auto-connect to configured robots
+        let isConnected = false;
+        try {
+          // Check if already open
+          if (port.readable !== null && port.writable !== null) {
+            isConnected = true;
+            console.log("Port already open, reusing connection");
+          } else if (shouldAutoConnect && robotType && robotId) {
+            // Auto-open robots that have saved configuration
+            console.log(
+              `Auto-connecting to saved robot: ${robotType} (${robotId})`
+            );
+            await port.open({ baudRate: 1000000 });
+            isConnected = true;
+
+            // Register with singleton connection manager
+            try {
+              const { getRobotConnectionManager } = await import(
+                "../../lerobot/web/robot-connection"
+              );
+              const connectionManager = getRobotConnectionManager();
+              await connectionManager.connect(
+                port,
+                robotType,
+                robotId,
+                serialNumber!
+              );
+            } catch (error) {
+              console.warn(
+                "Failed to register with connection manager:",
+                error
+              );
+            }
+          } else {
+            console.log(
+              "Port found but no saved robot configuration, skipping auto-connect"
+            );
+            isConnected = false;
+          }
+        } catch (error) {
+          console.log("Could not auto-connect to robot:", error);
+          isConnected = false;
+        }
+
         restoredPorts.push({
           port,
           name: getPortDisplayName(port),
           isConnected,
-          robotType: savedPort?.robotType,
-          robotId: savedPort?.robotId,
+          robotType,
+          robotId,
           serialNumber: serialNumber!,
           usbMetadata: usbMetadata || undefined,
         });
@@ -175,24 +195,6 @@ export function PortManager({
       onConnectedRobotsChange(restoredPorts);
     } catch (error) {
       console.error("Failed to load saved ports:", error);
-    }
-  };
-
-  const savePortsToStorage = () => {
-    try {
-      const dataToSave = connectedRobots.map((p) => {
-        const portInfo = p.port.getInfo();
-        return {
-          name: p.name,
-          robotType: p.robotType,
-          robotId: p.robotId,
-          usbVendorId: portInfo.usbVendorId,
-          usbProductId: portInfo.usbProductId,
-        };
-      });
-      localStorage.setItem("lerobot-ports", JSON.stringify(dataToSave));
-    } catch (error) {
-      console.error("Failed to save ports to storage:", error);
     }
   };
 
@@ -322,6 +324,27 @@ export function PortManager({
 
         onConnectedRobotsChange([...connectedRobots, newRobot]);
         console.log("🤖 New robot connected with ID:", serialNumber);
+
+        // Register with singleton connection manager if robot is configured
+        if (newRobot.robotType && newRobot.robotId) {
+          try {
+            const { getRobotConnectionManager } = await import(
+              "../../lerobot/web/robot-connection"
+            );
+            const connectionManager = getRobotConnectionManager();
+            await connectionManager.connect(
+              port,
+              newRobot.robotType,
+              newRobot.robotId,
+              serialNumber!
+            );
+          } catch (error) {
+            console.warn(
+              "Failed to register new connection with manager:",
+              error
+            );
+          }
+        }
       } else {
         // Existing robot - update port and connection status
         const updatedRobots = connectedRobots.map((robot, index) =>
@@ -391,44 +414,8 @@ export function PortManager({
           // Remove unified storage data
           localStorage.removeItem(unifiedKey);
           console.log(`🗑️ Deleted unified robot data: ${unifiedKey}`);
-
-          // Also clean up any old format keys for this robot (if they exist)
-          const oldKeys = [
-            `lerobot-robot-${portInfo.serialNumber}`,
-            `lerobot-calibration-${portInfo.serialNumber}`,
-          ];
-
-          // Try to find old calibration key by checking stored robot config
-          if (portInfo.robotType && portInfo.robotId) {
-            oldKeys.push(
-              `lerobot_calibration_${portInfo.robotType}_${portInfo.robotId}`
-            );
-          }
-
-          oldKeys.forEach((key) => {
-            if (localStorage.getItem(key)) {
-              localStorage.removeItem(key);
-              console.log(`🧹 Cleaned up old key: ${key}`);
-            }
-          });
         } catch (error) {
           console.warn("Failed to delete unified storage data:", error);
-
-          // Fallback: try to delete old format keys directly
-          if (portInfo.robotType && portInfo.robotId) {
-            const oldKeys = [
-              `lerobot-robot-${portInfo.serialNumber}`,
-              `lerobot-calibration-${portInfo.serialNumber}`,
-              `lerobot_calibration_${portInfo.robotType}_${portInfo.robotId}`,
-            ];
-
-            oldKeys.forEach((key) => {
-              if (localStorage.getItem(key)) {
-                localStorage.removeItem(key);
-                console.log(`🧹 Removed old format key: ${key}`);
-              }
-            });
-          }
         }
       }
 
@@ -683,6 +670,7 @@ export function PortManager({
                       handleUpdatePortInfo(index, robotType, robotId)
                     }
                     onCalibrate={() => handleCalibrate(portInfo)}
+                    onTeleoperate={() => onTeleoperate?.(portInfo)}
                   />
                 ))}
               </div>
@@ -757,6 +745,7 @@ interface PortCardProps {
     robotId: string
   ) => void;
   onCalibrate: () => void;
+  onTeleoperate: () => void;
 }
 
 function PortCard({
@@ -764,6 +753,7 @@ function PortCard({
   onDisconnect,
   onUpdateInfo,
   onCalibrate,
+  onTeleoperate,
 }: PortCardProps) {
   const [robotType, setRobotType] = useState<"so100_follower" | "so100_leader">(
     portInfo.robotType || "so100_follower"
@@ -1167,14 +1157,26 @@ function PortCard({
                 <span>Not calibrated yet</span>
               )}
             </div>
-            <Button
-              size="sm"
-              variant={calibrationStatus ? "outline" : "default"}
-              onClick={onCalibrate}
-              disabled={!currentRobotType || !currentRobotId}
-            >
-              {calibrationStatus ? "Re-calibrate" : "Calibrate"}
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant={calibrationStatus ? "outline" : "default"}
+                onClick={onCalibrate}
+                disabled={!currentRobotType || !currentRobotId}
+              >
+                {calibrationStatus ? "Re-calibrate" : "Calibrate"}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={onTeleoperate}
+                disabled={
+                  !currentRobotType || !currentRobotId || !portInfo.isConnected
+                }
+              >
+                🎮 Teleoperate
+              </Button>
+            </div>
           </div>
 
           {/* Device Info Scanner */}

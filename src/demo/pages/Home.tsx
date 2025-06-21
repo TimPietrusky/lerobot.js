@@ -10,6 +10,7 @@ import {
 import { Alert, AlertDescription } from "../components/ui/alert";
 import { PortManager } from "../components/PortManager";
 import { CalibrationPanel } from "../components/CalibrationPanel";
+import { TeleoperationPanel } from "../components/TeleoperationPanel";
 import { isWebSerialSupported } from "../../lerobot/web/calibrate";
 import type { ConnectedRobot } from "../types";
 
@@ -26,6 +27,8 @@ export function Home({
 }: HomeProps) {
   const [calibratingRobot, setCalibratingRobot] =
     useState<ConnectedRobot | null>(null);
+  const [teleoperatingRobot, setTeleoperatingRobot] =
+    useState<ConnectedRobot | null>(null);
   const isSupported = isWebSerialSupported();
 
   const handleCalibrate = (
@@ -40,8 +43,16 @@ export function Home({
     }
   };
 
+  const handleTeleoperate = (robot: ConnectedRobot) => {
+    setTeleoperatingRobot(robot);
+  };
+
   const handleFinishCalibration = () => {
     setCalibratingRobot(null);
+  };
+
+  const handleFinishTeleoperation = () => {
+    setTeleoperatingRobot(null);
   };
 
   return (
@@ -83,10 +94,16 @@ export function Home({
               onFinish={handleFinishCalibration}
             />
           </div>
+        ) : teleoperatingRobot ? (
+          <TeleoperationPanel
+            robot={teleoperatingRobot}
+            onClose={handleFinishTeleoperation}
+          />
         ) : (
           <div className="max-w-6xl mx-auto">
             <PortManager
               onCalibrate={handleCalibrate}
+              onTeleoperate={handleTeleoperate}
               connectedRobots={connectedRobots}
               onConnectedRobotsChange={onConnectedRobotsChange}
             />
