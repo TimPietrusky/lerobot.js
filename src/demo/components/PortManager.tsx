@@ -18,17 +18,31 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import { isWebSerialSupported } from "../../lerobot/web/calibrate";
-import type { ConnectedRobot } from "../types";
+import type { RobotConnection } from "../../lerobot/web/find_port.js";
+
+/**
+ * Type definitions for WebSerial API (missing from TypeScript)
+ */
+interface SerialPortInfo {
+  usbVendorId?: number;
+  usbProductId?: number;
+}
+
+declare global {
+  interface SerialPort {
+    getInfo(): SerialPortInfo;
+  }
+}
 
 interface PortManagerProps {
-  connectedRobots: ConnectedRobot[];
-  onConnectedRobotsChange: (robots: ConnectedRobot[]) => void;
+  connectedRobots: RobotConnection[];
+  onConnectedRobotsChange: (robots: RobotConnection[]) => void;
   onCalibrate?: (
     port: SerialPort,
     robotType: "so100_follower" | "so100_leader",
     robotId: string
   ) => void;
-  onTeleoperate?: (robot: ConnectedRobot) => void;
+  onTeleoperate?: (robot: RobotConnection) => void;
 }
 
 export function PortManager({
@@ -62,7 +76,7 @@ export function PortManager({
   const loadSavedPorts = async () => {
     try {
       const existingPorts = await navigator.serial.getPorts();
-      const restoredPorts: ConnectedRobot[] = [];
+      const restoredPorts: RobotConnection[] = [];
 
       for (const port of existingPorts) {
         // Get USB device metadata to determine serial number
@@ -297,7 +311,7 @@ export function PortManager({
 
       if (existingIndex === -1) {
         // New robot - add to list
-        const newRobot: ConnectedRobot = {
+        const newRobot: RobotConnection = {
           port,
           name: portName,
           isConnected: true,
@@ -489,47 +503,35 @@ export function PortManager({
       setFindPortsLog([]);
       setError(null);
 
-      // Get initial ports
-      const initialPorts = await navigator.serial.getPorts();
-      setFindPortsLog((prev) => [
-        ...prev,
-        `Found ${initialPorts.length} existing paired port(s)`,
-      ]);
+      // Use the new findPort API from standard library
+      const { findPort } = await import("../../lerobot/web/find_port.js");
 
-      // Ask user to disconnect
-      setFindPortsLog((prev) => [
-        ...prev,
-        "Please disconnect the USB cable from your robot and click OK",
-      ]);
+      const findPortProcess = await findPort({
+        onMessage: (message) => {
+          setFindPortsLog((prev) => [...prev, message]);
+        },
+      });
 
-      // Simple implementation - just show the instruction
-      // In a real implementation, we'd monitor port changes
-      const confirmed = confirm(
-        "Disconnect the USB cable from your robot and click OK when done"
+      const robotConnections = (await findPortProcess.result) as any; // RobotConnection[] from findPort
+      const robotConnection = robotConnections[0]; // Get first robot from array
+
+      const portName = getPortDisplayName(robotConnection.port);
+      setFindPortsLog((prev) => [...prev, `✅ Port ready: ${portName}`]);
+
+      // Add to connected ports if not already there
+      const existingIndex = connectedRobots.findIndex(
+        (p) => p.name === portName
       );
-
-      if (confirmed) {
-        setFindPortsLog((prev) => [...prev, "Reconnect the USB cable now"]);
-
-        // Request port selection
-        const port = await navigator.serial.requestPort();
-        await port.open({ baudRate: 1000000 });
-
-        const portName = getPortDisplayName(port);
-        setFindPortsLog((prev) => [...prev, `Identified port: ${portName}`]);
-
-        // Add to connected ports if not already there
-        const existingIndex = connectedRobots.findIndex(
-          (p) => p.name === portName
-        );
-        if (existingIndex === -1) {
-          const newPort: ConnectedRobot = {
-            port,
-            name: portName,
-            isConnected: true,
-          };
-          onConnectedRobotsChange([...connectedRobots, newPort]);
-        }
+      if (existingIndex === -1) {
+        const newPort: RobotConnection = {
+          port: robotConnection.port,
+          name: portName,
+          isConnected: true,
+          robotType: robotConnection.robotType,
+          robotId: robotConnection.robotId,
+          serialNumber: robotConnection.serialNumber,
+        };
+        onConnectedRobotsChange([...connectedRobots, newPort]);
       }
     } catch (error) {
       if (
@@ -574,7 +576,7 @@ export function PortManager({
     }
   };
 
-  const handleCalibrate = async (port: ConnectedRobot) => {
+  const handleCalibrate = async (port: RobotConnection) => {
     if (!port.robotType || !port.robotId) {
       setError("Please set robot type and ID before calibrating");
       return;
@@ -738,7 +740,7 @@ export function PortManager({
 }
 
 interface PortCardProps {
-  portInfo: ConnectedRobot;
+  portInfo: RobotConnection;
   onDisconnect: () => void;
   onUpdateInfo: (
     robotType: "so100_follower" | "so100_leader",

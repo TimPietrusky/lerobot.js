@@ -5,11 +5,11 @@ import { Badge } from "./ui/badge";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Progress } from "./ui/progress";
 import { useTeleoperation } from "../hooks/useTeleoperation";
-import type { ConnectedRobot } from "../types";
+import type { RobotConnection } from "../../lerobot/web/find_port.js";
 import { KEYBOARD_CONTROLS } from "../../lerobot/web/teleoperate";
 
 interface TeleoperationPanelProps {
-  robot: ConnectedRobot;
+  robot: RobotConnection;
   onClose: () => void;
 }
 
@@ -27,9 +27,9 @@ export function TeleoperationPanel({
     error,
     start,
     stop,
-    goToHome,
     simulateKeyPress,
     simulateKeyRelease,
+    moveMotorToPosition,
   } = useTeleoperation({
     robot,
     enabled,
@@ -153,7 +153,7 @@ export function TeleoperationPanel({
           </div>
         </div>
 
-        {/* Q/E and Space */}
+        {/* Q/E and Gripper */}
         <div className="flex justify-center gap-2">
           <div className="text-center">
             <h4 className="text-xs font-semibold mb-2 text-gray-600">Roll</h4>
@@ -170,9 +170,14 @@ export function TeleoperationPanel({
             <h4 className="text-xs font-semibold mb-2 text-gray-600">
               Gripper
             </h4>
-            <KeyButton keyCode=" " size="sm" className="min-w-16">
-              ⎵
-            </KeyButton>
+            <div className="flex gap-1">
+              <KeyButton keyCode="o" size="sm">
+                O
+              </KeyButton>
+              <KeyButton keyCode="c" size="sm">
+                C
+              </KeyButton>
+            </div>
           </div>
         </div>
 
@@ -261,15 +266,6 @@ export function TeleoperationPanel({
                     ▶️ Start Teleoperation
                   </Button>
                 )}
-
-                <Button
-                  onClick={goToHome}
-                  variant="outline"
-                  disabled={!isConnected}
-                  className="w-full"
-                >
-                  🏠 Go to Home
-                </Button>
               </div>
             </CardContent>
           </Card>
@@ -290,11 +286,7 @@ export function TeleoperationPanel({
               <CardTitle>Motor Positions</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {motorConfigs.map((motor) => {
-                const range = motor.maxPosition - motor.minPosition;
-                const position = motor.currentPosition - motor.minPosition;
-                const percentage = range > 0 ? (position / range) * 100 : 0;
-
+              {motorConfigs.map((motor, index) => {
                 return (
                   <div key={motor.name} className="space-y-1">
                     <div className="flex justify-between items-center">
@@ -305,7 +297,41 @@ export function TeleoperationPanel({
                         {motor.currentPosition}
                       </span>
                     </div>
-                    <Progress value={percentage} className="h-2" />
+                    <input
+                      type="range"
+                      min={motor.minPosition}
+                      max={motor.maxPosition}
+                      value={motor.currentPosition}
+                      disabled={!isActive}
+                      className={`w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-200 slider-thumb ${
+                        !isActive ? "opacity-50 cursor-not-allowed" : ""
+                      }`}
+                      style={{
+                        background: isActive
+                          ? `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${
+                              ((motor.currentPosition - motor.minPosition) /
+                                (motor.maxPosition - motor.minPosition)) *
+                              100
+                            }%, #e5e7eb ${
+                              ((motor.currentPosition - motor.minPosition) /
+                                (motor.maxPosition - motor.minPosition)) *
+                              100
+                            }%, #e5e7eb 100%)`
+                          : "#e5e7eb",
+                      }}
+                      onChange={async (e) => {
+                        if (!isActive) return;
+                        const newPosition = parseInt(e.target.value);
+                        try {
+                          await moveMotorToPosition(index, newPosition);
+                        } catch (error) {
+                          console.warn(
+                            "Failed to move motor via slider:",
+                            error
+                          );
+                        }
+                      }}
+                    />
                     <div className="flex justify-between text-xs text-gray-400">
                       <span>{motor.minPosition}</span>
                       <span>{motor.maxPosition}</span>
@@ -342,7 +368,8 @@ export function TeleoperationPanel({
                 <h4 className="font-semibold mb-2">Other Keys</h4>
                 <ul className="space-y-1 text-gray-600">
                   <li>Q E Wrist roll</li>
-                  <li>Space Gripper</li>
+                  <li>O Open gripper</li>
+                  <li>C Close gripper</li>
                 </ul>
               </div>
               <div>

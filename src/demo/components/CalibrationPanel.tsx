@@ -1,10 +1,4 @@
-import React, {
-  useState,
-  useEffect,
-  useCallback,
-  useRef,
-  useMemo,
-} from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import { Button } from "./ui/button";
 import {
   Card,
@@ -15,45 +9,35 @@ import {
 } from "./ui/card";
 import { Badge } from "./ui/badge";
 import {
-  createCalibrationController,
-  WebCalibrationController,
-  saveCalibrationResults,
+  calibrate,
   type WebCalibrationResults,
+  type LiveCalibrationData,
+  type CalibrationProcess,
 } from "../../lerobot/web/calibrate";
+import { releaseMotors } from "../../lerobot/web/utils/motor-communication.js";
+import { WebSerialPortWrapper } from "../../lerobot/web/utils/serial-port-wrapper.js";
+import { createSO100Config } from "../../lerobot/web/robots/so100_config.js";
 import { CalibrationModal } from "./CalibrationModal";
-import type { ConnectedRobot } from "../types";
+import type { RobotConnection } from "../../lerobot/web/find_port.js";
 
 interface CalibrationPanelProps {
-  robot: ConnectedRobot;
+  robot: RobotConnection;
   onFinish: () => void;
 }
 
-interface MotorCalibrationData {
-  name: string;
-  current: number;
-  min: number;
-  max: number;
-  range: number;
-}
-
-/**
- * Custom hook for calibration that manages the serial port properly
- * Uses vanilla calibration functions internally, provides React-friendly interface
- */
-function useCalibration(robot: ConnectedRobot) {
-  const [controller, setController] = useState<WebCalibrationController | null>(
-    null
-  );
+export function CalibrationPanel({ robot, onFinish }: CalibrationPanelProps) {
+  // Simple state management
   const [isCalibrating, setIsCalibrating] = useState(false);
-  const [isRecordingRanges, setIsRecordingRanges] = useState(false);
   const [calibrationResult, setCalibrationResult] =
     useState<WebCalibrationResults | null>(null);
   const [status, setStatus] = useState<string>("Ready to calibrate");
+  const [modalOpen, setModalOpen] = useState(false);
+  const [calibrationProcess, setCalibrationProcess] =
+    useState<CalibrationProcess | null>(null);
+  const [motorData, setMotorData] = useState<LiveCalibrationData>({});
+  const [isPreparing, setIsPreparing] = useState(false);
 
-  // Motor data state
-  const [motorData, setMotorData] = useState<MotorCalibrationData[]>([]);
-
-  // Static motor names - use useMemo to prevent recreation on every render
+  // Motor names for display
   const motorNames = useMemo(
     () => [
       "shoulder_pan",
@@ -66,268 +50,49 @@ function useCalibration(robot: ConnectedRobot) {
     []
   );
 
-  // Initialize controller when robot changes
-  const initializeController = useCallback(async () => {
-    if (!robot.port || !robot.robotType) {
-      throw new Error("Invalid robot configuration");
-    }
-
-    const newController = await createCalibrationController(
-      robot.robotType,
-      robot.port
-    );
-    setController(newController);
-    return newController;
-  }, [robot.port, robot.robotType]);
-
-  // Read motor positions using the controller (no concurrent access)
-  const readMotorPositions = useCallback(async (): Promise<number[]> => {
-    if (!controller) {
-      throw new Error("Controller not initialized");
-    }
-    return await controller.readMotorPositions();
-  }, [controller]);
-
-  // Update motor data from positions
-  const updateMotorData = useCallback(
-    (
-      positions: number[],
-      rangeMins?: { [motor: string]: number },
-      rangeMaxes?: { [motor: string]: number }
-    ) => {
-      const newData = motorNames.map((name, index) => {
-        const current = positions[index];
-        const min = rangeMins ? rangeMins[name] : current;
-        const max = rangeMaxes ? rangeMaxes[name] : current;
-
-        return {
-          name,
-          current,
-          min,
-          max,
-          range: max - min,
-        };
-      });
-
-      setMotorData(newData);
-    },
-    [motorNames]
-  );
-
   // Initialize motor data
   const initializeMotorData = useCallback(() => {
-    const initialData = motorNames.map((name) => ({
-      name,
-      current: 2047,
-      min: 2047,
-      max: 2047,
-      range: 0,
-    }));
+    const initialData: LiveCalibrationData = {};
+    motorNames.forEach((name) => {
+      initialData[name] = {
+        current: 2047,
+        min: 2047,
+        max: 2047,
+        range: 0,
+      };
+    });
     setMotorData(initialData);
   }, [motorNames]);
 
-  // Start calibration process
-  const startCalibration = useCallback(async () => {
-    try {
-      setStatus("🤖 Starting calibration process...");
-      setIsCalibrating(true);
-
-      const ctrl = await initializeController();
-
-      // Step 1: Homing
-      setStatus("📍 Setting homing position...");
-      await ctrl.performHomingStep();
-
-      return ctrl;
-    } catch (error) {
-      setIsCalibrating(false);
-      throw error;
+  // Release motor torque for better UX - allows immediate joint movement
+  const releaseMotorTorque = useCallback(async () => {
+    if (!robot.port || !robot.robotType) {
+      return;
     }
-  }, [initializeController]);
 
-  // Start range recording
-  const startRangeRecording = useCallback(
-    async (
-      controllerToUse: WebCalibrationController,
-      stopFunction: () => boolean,
-      onUpdate?: (
-        mins: { [motor: string]: number },
-        maxes: { [motor: string]: number },
-        currentPositions: { [motor: string]: number }
-      ) => void
-    ) => {
-      if (!controllerToUse) {
-        throw new Error("Controller not provided");
-      }
+    try {
+      setIsPreparing(true);
+      setStatus("🔓 Releasing motor torque - joints can now be moved freely");
 
-      setStatus(
-        "📏 Recording joint ranges - move all joints through their full range"
-      );
-      setIsRecordingRanges(true);
+      // Create port wrapper and config to get motor IDs
+      const port = new WebSerialPortWrapper(robot.port);
+      await port.initialize();
+      const config = createSO100Config(robot.robotType);
 
-      try {
-        await controllerToUse.performRangeRecordingStep(
-          stopFunction,
-          (rangeMins, rangeMaxes, currentPositions) => {
-            setStatus("📏 Recording joint ranges - capturing data...");
+      // Release motors so they can be moved freely by hand
+      await releaseMotors(port, config.motorIds);
 
-            // Update motor data with CURRENT LIVE POSITIONS (not averages!)
-            const currentPositionsArray = motorNames.map(
-              (name) => currentPositions[name]
-            );
-            updateMotorData(currentPositionsArray, rangeMins, rangeMaxes);
+      setStatus("✅ Joints are now free to move - set your homing position");
+    } catch (error) {
+      console.warn("Failed to release motor torque:", error);
+      setStatus("⚠️ Could not release motor torque - try moving joints gently");
+    } finally {
+      setIsPreparing(false);
+    }
+  }, [robot]);
 
-            if (onUpdate) {
-              onUpdate(rangeMins, rangeMaxes, currentPositions);
-            }
-          }
-        );
-      } finally {
-        setIsRecordingRanges(false);
-      }
-    },
-    [motorNames, updateMotorData]
-  );
-
-  // Finish calibration
-  const finishCalibration = useCallback(
-    async (
-      controllerToUse?: WebCalibrationController,
-      recordingCount?: number
-    ) => {
-      const ctrl = controllerToUse || controller;
-      if (!ctrl) {
-        throw new Error("Controller not initialized");
-      }
-
-      setStatus("💾 Finishing calibration...");
-      const result = await ctrl.finishCalibration();
-      setCalibrationResult(result);
-
-      // Save results using serial number for dashboard detection
-      // Use the same serial number logic as dashboard: prefer main serialNumber, fallback to USB metadata, then "unknown"
-      const serialNumber =
-        robot.serialNumber || robot.usbMetadata?.serialNumber || "unknown";
-
-      console.log("🔍 Debug - Saving calibration with:", {
-        robotType: robot.robotType,
-        robotId: robot.robotId,
-        mainSerialNumber: robot.serialNumber,
-        usbSerialNumber: robot.usbMetadata?.serialNumber,
-        finalSerialNumber: serialNumber,
-        storageKey: `lerobotjs-${serialNumber}`,
-      });
-
-      await saveCalibrationResults(
-        result,
-        robot.robotType!,
-        robot.robotId || `${robot.robotType}_1`,
-        serialNumber,
-        recordingCount || 0
-      );
-
-      // Update final motor data
-      const finalData = motorNames.map((motorName) => {
-        const motorResult = result[motorName];
-        return {
-          name: motorName,
-          current: (motorResult.range_min + motorResult.range_max) / 2,
-          min: motorResult.range_min,
-          max: motorResult.range_max,
-          range: motorResult.range_max - motorResult.range_min,
-        };
-      });
-
-      setMotorData(finalData);
-      setStatus("✅ Calibration completed successfully! Configuration saved.");
-      setIsCalibrating(false);
-
-      return result;
-    },
-    [controller, robot.robotType, robot.robotId, motorNames]
-  );
-
-  // Reset states
-  const reset = useCallback(() => {
-    setController(null);
-    setIsCalibrating(false);
-    setIsRecordingRanges(false);
-    setCalibrationResult(null);
-    setStatus("Ready to calibrate");
-    initializeMotorData();
-  }, [initializeMotorData]);
-
-  // Initialize on mount
-  useEffect(() => {
-    initializeMotorData();
-  }, [initializeMotorData]);
-
-  return {
-    // State
-    controller,
-    isCalibrating,
-    isRecordingRanges,
-    calibrationResult,
-    status,
-    motorData,
-
-    // Actions
-    startCalibration,
-    startRangeRecording,
-    finishCalibration,
-    readMotorPositions,
-    reset,
-
-    // Utilities
-    updateMotorData,
-  };
-}
-
-export function CalibrationPanel({ robot, onFinish }: CalibrationPanelProps) {
-  const {
-    controller,
-    isCalibrating,
-    isRecordingRanges,
-    calibrationResult,
-    status,
-    motorData,
-    startCalibration,
-    startRangeRecording,
-    finishCalibration,
-    readMotorPositions,
-    reset,
-    updateMotorData,
-  } = useCalibration(robot);
-
-  // Modal state
-  const [modalOpen, setModalOpen] = useState(false);
-
-  // Recording state
-  const [stopRecordingFunction, setStopRecordingFunction] = useState<
-    (() => void) | null
-  >(null);
-
-  // Motor names matching Python lerobot exactly (NOT Node CLI)
-  const motorNames = [
-    "shoulder_pan",
-    "shoulder_lift",
-    "elbow_flex",
-    "wrist_flex",
-    "wrist_roll",
-    "gripper",
-  ];
-
-  // Motor IDs for SO-100 (STS3215 servos)
-  const motorIds = [1, 2, 3, 4, 5, 6];
-
-  // Keep track of last known good positions to avoid glitches
-  const lastKnownPositions = useRef<number[]>([
-    2047, 2047, 2047, 2047, 2047, 2047,
-  ]);
-
-  // NO concurrent motor reading - let the calibration hook handle all serial operations
-
-  const handleContinueCalibration = async () => {
+  // Start calibration using new API
+  const handleContinueCalibration = useCallback(async () => {
     setModalOpen(false);
 
     if (!robot.port || !robot.robotType) {
@@ -335,76 +100,119 @@ export function CalibrationPanel({ robot, onFinish }: CalibrationPanelProps) {
     }
 
     try {
-      const ctrl = await startCalibration();
+      setStatus("🤖 Starting calibration process...");
+      setIsCalibrating(true);
+      initializeMotorData();
 
-      // Set up manual control - user decides when to stop
-      let shouldStopRecording = false;
-      let recordingCount = 0;
+      // Use the new unified calibrate API - pass the whole robot connection
+      const robotConnection = {
+        port: robot.port,
+        robotType: robot.robotType!,
+        robotId: robot.robotId || `${robot.robotType}_1`,
+        serialNumber: robot.serialNumber || `unknown_${Date.now()}`,
+        connected: robot.isConnected,
+      } as any; // Type assertion to work around SerialPort type differences
 
-      // Create stop function and store it in state for the button
-      const stopRecording = () => {
-        shouldStopRecording = true;
-      };
-      setStopRecordingFunction(() => stopRecording);
+      const process = await calibrate(robotConnection, {
+        onLiveUpdate: (data) => {
+          setMotorData(data);
+          setStatus(
+            "📏 Recording joint ranges - move all joints through their full range"
+          );
+        },
+        onProgress: (message) => {
+          setStatus(message);
+        },
+      });
 
-      // Add Enter key listener
+      setCalibrationProcess(process);
+
+      // Add Enter key listener for stopping (matching Node.js UX)
       const handleKeyPress = (event: KeyboardEvent) => {
         if (event.key === "Enter") {
-          shouldStopRecording = true;
+          process.stop();
         }
       };
-
       document.addEventListener("keydown", handleKeyPress);
 
       try {
-        await startRangeRecording(
-          ctrl,
-          () => {
-            return shouldStopRecording;
-          },
-          (rangeMins, rangeMaxes, currentPositions) => {
-            recordingCount++;
-          }
+        // Wait for calibration to complete
+        const result = await process.result;
+        setCalibrationResult(result);
+
+        // App-level concern: Save results to storage
+        const serialNumber =
+          robot.serialNumber || robot.usbMetadata?.serialNumber || "unknown";
+        await saveCalibrationResults(
+          result,
+          robot.robotType,
+          robot.robotId || `${robot.robotType}_1`,
+          serialNumber
+        );
+
+        setStatus(
+          "✅ Calibration completed successfully! Configuration saved."
         );
       } finally {
         document.removeEventListener("keydown", handleKeyPress);
-        setStopRecordingFunction(null);
+        setCalibrationProcess(null);
+        setIsCalibrating(false);
       }
-
-      // Step 3: Finish calibration with recording count
-      await finishCalibration(ctrl, recordingCount);
     } catch (error) {
       console.error("❌ Calibration failed:", error);
+      setStatus(
+        `❌ Calibration failed: ${
+          error instanceof Error ? error.message : error
+        }`
+      );
+      setIsCalibrating(false);
+      setCalibrationProcess(null);
     }
-  };
+  }, [robot, initializeMotorData]);
 
-  // Generate calibration config JSON matching Python lerobot format (OBJECT format, not arrays)
-  const generateConfigJSON = () => {
-    // Use the calibration result if available
-    if (calibrationResult) {
-      return calibrationResult;
+  // Stop calibration recording
+  const handleStopRecording = useCallback(() => {
+    if (calibrationProcess) {
+      calibrationProcess.stop();
     }
+  }, [calibrationProcess]);
 
-    // Fallback: generate from motor data (shouldn't happen with new flow)
-    const calibrationData: any = {};
-    motorNames.forEach((motorName, index) => {
-      const motor = motorData[index];
-      calibrationData[motorName] = {
-        homing_offset: motor.current - 2047, // Center offset for STS3215 (4095/2)
-        drive_mode: 0, // Python lerobot SO-100 uses drive_mode 0
-        start_pos: motor.min,
-        end_pos: motor.max,
-        calib_mode: "middle", // Python lerobot SO-100 standard
+  // App-level concern: Save calibration results
+  const saveCalibrationResults = async (
+    results: WebCalibrationResults,
+    robotType: string,
+    robotId: string,
+    serialNumber: string
+  ) => {
+    try {
+      // Save to unified storage (app-level functionality)
+      const { saveCalibrationData } = await import("../lib/unified-storage.js");
+
+      const fullCalibrationData = {
+        ...results,
+        device_type: robotType,
+        device_id: robotId,
+        calibrated_at: new Date().toISOString(),
+        platform: "web",
+        api: "Web Serial API",
       };
-    });
 
-    return calibrationData;
+      const metadata = {
+        timestamp: new Date().toISOString(),
+        readCount: Object.keys(motorData).length > 0 ? 100 : 0, // Estimate
+      };
+
+      saveCalibrationData(serialNumber, fullCalibrationData, metadata);
+    } catch (error) {
+      console.warn("Failed to save calibration results:", error);
+    }
   };
 
-  // Download calibration config as JSON file
-  const downloadConfigJSON = () => {
-    const configData = generateConfigJSON();
-    const jsonString = JSON.stringify(configData, null, 2);
+  // App-level concern: JSON export functionality
+  const downloadConfigJSON = useCallback(() => {
+    if (!calibrationResult) return;
+
+    const jsonString = JSON.stringify(calibrationResult, null, 2);
     const blob = new Blob([jsonString], { type: "application/json" });
     const url = URL.createObjectURL(blob);
 
@@ -415,7 +223,7 @@ export function CalibrationPanel({ robot, onFinish }: CalibrationPanelProps) {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-  };
+  }, [calibrationResult, robot.robotId, robot.robotType]);
 
   return (
     <div className="space-y-4">
@@ -455,27 +263,29 @@ export function CalibrationPanel({ robot, onFinish }: CalibrationPanelProps) {
               <p className="text-sm text-blue-800">{status}</p>
               {isCalibrating && (
                 <p className="text-xs text-blue-600 mt-1">
-                  Move joints through full range | Press "Finish Recording" when
-                  done
+                  Move joints through full range | Press "Finish Recording" or
+                  Enter key when done
                 </p>
               )}
             </div>
 
             <div className="flex gap-2">
               {!isCalibrating && !calibrationResult && (
-                <Button onClick={() => setModalOpen(true)}>
-                  Start Calibration
+                <Button
+                  onClick={async () => {
+                    // Release motor torque FIRST - so user can move joints immediately
+                    await releaseMotorTorque();
+                    // THEN open modal - user can now follow instructions right away
+                    setModalOpen(true);
+                  }}
+                  disabled={isPreparing}
+                >
+                  {isPreparing ? "Preparing..." : "Start Calibration"}
                 </Button>
               )}
 
-              {isCalibrating && !isRecordingRanges && (
-                <Button onClick={finishCalibration} variant="outline">
-                  Finish Calibration
-                </Button>
-              )}
-
-              {isRecordingRanges && stopRecordingFunction && (
-                <Button onClick={stopRecordingFunction} variant="default">
+              {isCalibrating && calibrationProcess && (
+                <Button onClick={handleStopRecording} variant="default">
                   Finish Recording
                 </Button>
               )}
@@ -507,7 +317,7 @@ export function CalibrationPanel({ robot, onFinish }: CalibrationPanelProps) {
           <CardContent>
             <div className="space-y-3">
               <pre className="bg-gray-100 p-4 rounded-lg text-sm overflow-x-auto border">
-                <code>{JSON.stringify(generateConfigJSON(), null, 2)}</code>
+                <code>{JSON.stringify(calibrationResult, null, 2)}</code>
               </pre>
               <div className="flex gap-2">
                 <Button onClick={downloadConfigJSON} variant="outline">
@@ -516,7 +326,7 @@ export function CalibrationPanel({ robot, onFinish }: CalibrationPanelProps) {
                 <Button
                   onClick={() => {
                     navigator.clipboard.writeText(
-                      JSON.stringify(generateConfigJSON(), null, 2)
+                      JSON.stringify(calibrationResult, null, 2)
                     );
                   }}
                   variant="outline"
@@ -529,12 +339,12 @@ export function CalibrationPanel({ robot, onFinish }: CalibrationPanelProps) {
         </Card>
       )}
 
-      {/* Live Position Recording Table (matching Node CLI exactly) */}
+      {/* Live Position Recording Table */}
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Live Position Recording</CardTitle>
           <CardDescription>
-            Real-time motor position feedback - exactly like Node CLI
+            Real-time motor position feedback during calibration
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -560,28 +370,39 @@ export function CalibrationPanel({ robot, onFinish }: CalibrationPanelProps) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {motorData.map((motor, index) => (
-                  <tr key={index} className="hover:bg-gray-50">
-                    <td className="px-4 py-2 font-medium flex items-center gap-2">
-                      {motor.name}
-                      {motor.range > 100 && (
-                        <span className="text-green-600 text-xs">✓</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-right">{motor.current}</td>
-                    <td className="px-4 py-2 text-right">{motor.min}</td>
-                    <td className="px-4 py-2 text-right">{motor.max}</td>
-                    <td className="px-4 py-2 text-right font-medium">
-                      <span
-                        className={
-                          motor.range > 100 ? "text-green-600" : "text-gray-500"
-                        }
-                      >
-                        {motor.range}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                {motorNames.map((motorName) => {
+                  const motor = motorData[motorName] || {
+                    current: 2047,
+                    min: 2047,
+                    max: 2047,
+                    range: 0,
+                  };
+
+                  return (
+                    <tr key={motorName} className="hover:bg-gray-50">
+                      <td className="px-4 py-2 font-medium flex items-center gap-2">
+                        {motorName}
+                        {motor.range > 100 && (
+                          <span className="text-green-600 text-xs">✓</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-right">{motor.current}</td>
+                      <td className="px-4 py-2 text-right">{motor.min}</td>
+                      <td className="px-4 py-2 text-right">{motor.max}</td>
+                      <td className="px-4 py-2 text-right font-medium">
+                        <span
+                          className={
+                            motor.range > 100
+                              ? "text-green-600"
+                              : "text-gray-500"
+                          }
+                        >
+                          {motor.range}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

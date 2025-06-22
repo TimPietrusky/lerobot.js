@@ -1,9 +1,34 @@
 /**
  * Browser implementation of find_port using WebSerial API
+ * Clean API with native dialogs and auto-connect modes
  *
- * Provides the same functionality as the Node.js version but adapted for browser environment
- * Uses WebSerial API for serial port detection and user interaction through DOM
+ * Usage Examples:
+ *
+ * // Interactive mode - always returns array
+ * const findProcess = await findPort();
+ * const robotConnections = await findProcess.result;
+ * const robot = robotConnections[0]; // First (and only) robot
+ * await calibrate(robot, options);
+ *
+ * // Auto-connect mode - returns array of all attempted connections
+ * const findProcess = await findPort({
+ *   robotConfigs: [
+ *     { robotType: "so100_follower", robotId: "arm1", serialNumber: "ABC123" },
+ *     { robotType: "so100_leader", robotId: "arm2", serialNumber: "DEF456" }
+ *   ]
+ * });
+ * const robotConnections = await findProcess.result;
+ * for (const robot of robotConnections.filter(r => r.isConnected)) {
+ *   await calibrate(robot, options);
+ * }
+ *
+ * // Store/load from localStorage
+ * localStorage.setItem('myRobots', JSON.stringify(robotConnections));
+ * const storedRobots = JSON.parse(localStorage.getItem('myRobots'));
+ * await calibrate(storedRobots[0], options);
  */
+
+import { getRobotConnectionManager } from "./robot-connection.js";
 
 /**
  * Type definitions for WebSerial API (not yet in all TypeScript libs)
@@ -49,6 +74,71 @@ declare global {
 }
 
 /**
+ * Unified robot connection interface used across all functions
+ * This same object works for findPort, calibrate, teleoperate, etc.
+ * Includes all fields needed by demo and other applications
+ */
+export interface RobotConnection {
+  port: SerialPort;
+  name: string; // Display name for UI
+  isConnected: boolean; // Connection status
+  robotType?: "so100_follower" | "so100_leader"; // Optional until user configures
+  robotId?: string; // Optional until user configures
+  serialNumber: string; // Always required for identification
+  error?: string; // Error message if connection failed
+  usbMetadata?: {
+    // USB device information
+    vendorId: string;
+    productId: string;
+    serialNumber: string;
+    manufacturerName: string;
+    productName: string;
+    usbVersionMajor?: number;
+    usbVersionMinor?: number;
+    deviceClass?: number;
+    deviceSubclass?: number;
+    deviceProtocol?: number;
+  };
+}
+
+/**
+ * Minimal robot config for finding/connecting to specific robots
+ */
+export interface RobotConfig {
+  robotType: "so100_follower" | "so100_leader";
+  robotId: string;
+  serialNumber: string;
+}
+
+/**
+ * Options for findPort function
+ */
+export interface FindPortOptions {
+  // Auto-connect mode: provide robot configs to connect to
+  robotConfigs?: RobotConfig[];
+
+  // Callbacks
+  onMessage?: (message: string) => void;
+  onRequestUserAction?: (
+    message: string,
+    type: "confirm" | "select"
+  ) => Promise<boolean>;
+}
+
+/**
+ * Process object returned by findPort
+ */
+export interface FindPortProcess {
+  // Result promise - Always returns RobotConnection[] (consistent API)
+  // Interactive mode: single robot in array
+  // Auto-connect mode: all successfully connected robots in array
+  result: Promise<RobotConnection[]>;
+
+  // Control
+  stop: () => void;
+}
+
+/**
  * Check if WebSerial API is available
  */
 function isWebSerialSupported(): boolean {
@@ -56,136 +146,185 @@ function isWebSerialSupported(): boolean {
 }
 
 /**
- * Get all available serial ports (requires user permission)
- * Browser equivalent of Node.js findAvailablePorts()
+ * Get display name for a port
  */
-async function findAvailablePortsWeb(): Promise<SerialPort[]> {
-  if (!isWebSerialSupported()) {
-    throw new Error(
-      "WebSerial API not supported. Please use Chrome/Edge 89+ or Chrome Android 105+"
-    );
+function getPortDisplayName(port: SerialPort): string {
+  const info = port.getInfo();
+  if (info.usbVendorId && info.usbProductId) {
+    return `USB Device (${info.usbVendorId}:${info.usbProductId})`;
   }
+  return "Serial Device";
+}
+
+/**
+ * Try to get serial number from a port by opening and reading device info
+ */
+async function getPortSerialNumber(port: SerialPort): Promise<string | null> {
+  try {
+    const wasOpen = port.readable !== null;
+
+    // Open port if not already open
+    if (!wasOpen) {
+      await port.open({ baudRate: 1000000 });
+    }
+
+    // For now, we'll return null since reading serial number from STS3215 motors
+    // requires specific protocol implementation. This is a placeholder for future enhancement.
+    // In practice, serial numbers are typically stored in device metadata or configuration.
+
+    // Close port if we opened it
+    if (!wasOpen && port.readable) {
+      await port.close();
+    }
+
+    return null;
+  } catch (error) {
+    console.warn("Could not read serial number from port:", error);
+    return null;
+  }
+}
+
+/**
+ * Interactive mode: Show native dialog for port selection
+ */
+async function findPortInteractive(
+  options: FindPortOptions
+): Promise<RobotConnection[]> {
+  const { onMessage } = options;
+
+  onMessage?.("Opening port selection dialog...");
 
   try {
-    return await navigator.serial.getPorts();
+    // Use native browser dialog - much better UX than port diffing!
+    const port = await navigator.serial.requestPort();
+
+    // Open the port
+    await port.open({ baudRate: 1000000 });
+
+    const portName = getPortDisplayName(port);
+    onMessage?.(`✅ Connected to ${portName}`);
+
+    // Return unified RobotConnection object in array (consistent API)
+    // In interactive mode, user will need to specify robot details separately
+    return [
+      {
+        port,
+        name: portName,
+        isConnected: true,
+        robotType: "so100_follower", // Default, user can change
+        robotId: "interactive_robot",
+        serialNumber: `interactive_${Date.now()}`,
+      },
+    ];
   } catch (error) {
+    if (
+      error instanceof Error &&
+      (error.message.includes("cancelled") || error.name === "NotAllowedError")
+    ) {
+      throw new Error("Port selection cancelled by user");
+    }
     throw new Error(
-      `Failed to get serial ports: ${
-        error instanceof Error ? error.message : error
-      }`
+      `Failed to select port: ${error instanceof Error ? error.message : error}`
     );
   }
 }
 
 /**
- * Format port info for display
- * Mimics the Node.js port listing format
+ * Auto-connect mode: Connect to robots by serial number
+ * Returns all successfully connected robots
  */
-function formatPortInfo(ports: SerialPort[]): string[] {
-  return ports.map((port, index) => {
-    const info = port.getInfo();
-    if (info.usbVendorId && info.usbProductId) {
-      return `Port ${index + 1} (USB:${info.usbVendorId}:${info.usbProductId})`;
+async function findPortAutoConnect(
+  robotConfigs: RobotConfig[],
+  options: FindPortOptions
+): Promise<RobotConnection[]> {
+  const { onMessage } = options;
+  const results: RobotConnection[] = [];
+
+  onMessage?.(`🔍 Auto-connecting to ${robotConfigs.length} robot(s)...`);
+
+  // Get all available ports
+  const availablePorts = await navigator.serial.getPorts();
+  onMessage?.(`Found ${availablePorts.length} available port(s)`);
+
+  for (const config of robotConfigs) {
+    onMessage?.(`Connecting to ${config.robotId} (${config.serialNumber})...`);
+
+    let connected = false;
+    let matchedPort: SerialPort | null = null;
+    let error: string | undefined;
+
+    try {
+      // For now, we'll try each available port and see if we can connect
+      // In a future enhancement, we could match by actual serial number reading
+      for (const port of availablePorts) {
+        try {
+          // Try to open and use this port
+          const wasOpen = port.readable !== null;
+          if (!wasOpen) {
+            await port.open({ baudRate: 1000000 });
+          }
+
+          // Test connection by trying to communicate
+          const manager = getRobotConnectionManager();
+          await manager.connect(
+            port,
+            config.robotType,
+            config.robotId,
+            config.serialNumber
+          );
+
+          matchedPort = port;
+          connected = true;
+          onMessage?.(`✅ Connected to ${config.robotId}`);
+          break;
+        } catch (portError) {
+          // This port didn't work, try next one
+          console.log(
+            `Port ${getPortDisplayName(port)} didn't match ${config.robotId}:`,
+            portError
+          );
+          continue;
+        }
+      }
+
+      if (!connected) {
+        error = `No matching port found for ${config.robotId} (${config.serialNumber})`;
+        onMessage?.(`❌ ${error}`);
+      }
+    } catch (err) {
+      error = err instanceof Error ? err.message : "Unknown error";
+      onMessage?.(`❌ Failed to connect to ${config.robotId}: ${error}`);
     }
-    return `Port ${index + 1}`;
-  });
-}
 
-/**
- * Sleep for specified milliseconds
- * Same as Node.js version
- */
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
- * Wait for user interaction (button click or similar)
- * Browser equivalent of Node.js readline input()
- */
-function waitForUserAction(message: string): Promise<void> {
-  return new Promise((resolve) => {
-    const modal = document.createElement("div");
-    modal.style.cssText = `
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0,0,0,0.5);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 1000;
-    `;
-
-    const dialog = document.createElement("div");
-    dialog.style.cssText = `
-      background: white;
-      padding: 2rem;
-      border-radius: 8px;
-      text-align: center;
-      max-width: 500px;
-      margin: 1rem;
-    `;
-
-    dialog.innerHTML = `
-      <h3>Port Detection</h3>
-      <p style="margin: 1rem 0;">${message}</p>
-      <button id="continue-btn" style="
-        background: #3498db;
-        color: white;
-        border: none;
-        padding: 12px 24px;
-        border-radius: 6px;
-        cursor: pointer;
-        font-size: 1rem;
-      ">Continue</button>
-    `;
-
-    modal.appendChild(dialog);
-    document.body.appendChild(modal);
-
-    const continueBtn = dialog.querySelector(
-      "#continue-btn"
-    ) as HTMLButtonElement;
-    continueBtn.addEventListener("click", () => {
-      document.body.removeChild(modal);
-      resolve();
+    // Add result (successful or failed)
+    results.push({
+      port: matchedPort!,
+      name: matchedPort ? getPortDisplayName(matchedPort) : "Unknown Port",
+      isConnected: connected,
+      robotType: config.robotType,
+      robotId: config.robotId,
+      serialNumber: config.serialNumber,
+      error,
     });
-  });
-}
+  }
 
-/**
- * Request permission to access serial ports
- */
-async function requestSerialPermission(
-  logger: (message: string) => void
-): Promise<void> {
-  logger("Requesting permission to access serial ports...");
-  logger(
-    'Please select a serial device when prompted, or click "Cancel" if no devices are connected yet.'
+  const successCount = results.filter((r) => r.isConnected).length;
+  onMessage?.(
+    `🎯 Connected to ${successCount}/${robotConfigs.length} robot(s)`
   );
 
-  try {
-    // This will show the browser's serial port selection dialog
-    await navigator.serial.requestPort();
-    logger("✅ Permission granted to access serial ports.");
-  } catch (error) {
-    // User cancelled the dialog - this is OK, they might not have devices connected yet
-    console.log("Permission dialog cancelled:", error);
-  }
+  return results;
 }
 
 /**
- * Main find port function for browser
- * Maintains identical UX and messaging to Node.js version
+ * Main findPort function - clean API with Two modes:
+ *
+ * Mode 1: Interactive - Returns single RobotConnection
+ * Mode 2: Auto-connect - Returns RobotConnection[]
  */
-export async function findPortWeb(
-  logger: (message: string) => void
-): Promise<void> {
-  logger("Finding all available ports for the MotorsBus.");
-
+export async function findPort(
+  options: FindPortOptions = {}
+): Promise<FindPortProcess> {
   // Check WebSerial support
   if (!isWebSerialSupported()) {
     throw new Error(
@@ -193,100 +332,40 @@ export async function findPortWeb(
     );
   }
 
-  // Get initial ports (check what we already have access to)
-  let portsBefore: SerialPort[];
-  try {
-    portsBefore = await findAvailablePortsWeb();
-  } catch (error) {
-    throw new Error(
-      `Failed to get serial ports: ${
-        error instanceof Error ? error.message : error
-      }`
-    );
-  }
+  const { robotConfigs, onMessage } = options;
+  let stopped = false;
 
-  // If no ports are available, request permission
-  if (portsBefore.length === 0) {
-    logger(
-      "⚠️ No serial ports available. Requesting permission to access devices..."
-    );
-    await requestSerialPermission(logger);
+  // Determine mode
+  const isAutoConnectMode = robotConfigs && robotConfigs.length > 0;
 
-    // Try again after permission request
-    portsBefore = await findAvailablePortsWeb();
+  onMessage?.(
+    `🤖 ${
+      isAutoConnectMode ? "Auto-connect" : "Interactive"
+    } port discovery started`
+  );
 
-    if (portsBefore.length === 0) {
-      throw new Error(
-        'No ports detected. Please connect your devices, use "Show Available Ports" first, or check browser compatibility.'
-      );
+  // Create result promise
+  const resultPromise = (async () => {
+    if (stopped) {
+      throw new Error("Port discovery was stopped");
     }
-  }
 
-  // Show current ports
-  const portsBeforeFormatted = formatPortInfo(portsBefore);
-  logger(
-    `Ports before disconnecting: [${portsBeforeFormatted
-      .map((p) => `'${p}'`)
-      .join(", ")}]`
-  );
-
-  // Ask user to disconnect device
-  logger(
-    "Remove the USB cable from your MotorsBus and press Continue when done."
-  );
-  await waitForUserAction(
-    "Remove the USB cable from your MotorsBus and press Continue when done."
-  );
-
-  // Allow some time for port to be released (equivalent to Python's time.sleep(0.5))
-  await sleep(500);
-
-  // Get ports after disconnection
-  const portsAfter = await findAvailablePortsWeb();
-  const portsAfterFormatted = formatPortInfo(portsAfter);
-  logger(
-    `Ports after disconnecting: [${portsAfterFormatted
-      .map((p) => `'${p}'`)
-      .join(", ")}]`
-  );
-
-  // Find the difference by comparing port objects directly
-  // This handles cases where multiple devices have the same vendor/product ID
-  const removedPorts = portsBefore.filter((portBefore) => {
-    return !portsAfter.includes(portBefore);
-  });
-
-  // If object comparison fails (e.g., browser creates new objects), fall back to count-based detection
-  if (removedPorts.length === 0 && portsBefore.length > portsAfter.length) {
-    const countDifference = portsBefore.length - portsAfter.length;
-    if (countDifference === 1) {
-      logger(`The port of this MotorsBus is one of the disconnected devices.`);
-      logger(
-        "Note: Exact port identification not possible with identical devices."
-      );
-      logger("Reconnect the USB cable.");
-      return;
+    if (isAutoConnectMode) {
+      return await findPortAutoConnect(robotConfigs!, options);
     } else {
-      logger(`${countDifference} ports were removed, but expected exactly 1.`);
-      logger("Please disconnect only one device and try again.");
-      return;
+      return await findPortInteractive(options);
     }
-  }
+  })();
 
-  if (removedPorts.length === 1) {
-    const port = formatPortInfo(removedPorts)[0];
-    logger(`The port of this MotorsBus is '${port}'`);
-    logger("Reconnect the USB cable.");
-  } else if (removedPorts.length === 0) {
-    logger("No difference found, did you remove the USB cable?");
-    logger("Please try again: disconnect one device and click Continue.");
-    return;
-  } else {
-    const portNames = formatPortInfo(removedPorts);
-    throw new Error(
-      `Could not detect the port. More than one port was found (${JSON.stringify(
-        portNames
-      )}).`
-    );
-  }
+  // Return process object
+  return {
+    result: resultPromise,
+    stop: () => {
+      stopped = true;
+      onMessage?.("🛑 Port discovery stopped");
+    },
+  };
 }
+
+// Export the main function (renamed from findPortWeb)
+export { findPort as findPortWeb }; // Backward compatibility alias

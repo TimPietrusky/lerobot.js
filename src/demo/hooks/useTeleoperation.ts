@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRobotConnection } from "./useRobotConnection";
 import { getUnifiedRobotData } from "../lib/unified-storage";
-import type { ConnectedRobot } from "../types";
+import type { RobotConnection } from "../../lerobot/web/find_port.js";
 
 export interface MotorConfig {
   name: string;
@@ -17,7 +17,7 @@ export interface KeyState {
 }
 
 export interface UseTeleoperationOptions {
-  robot: ConnectedRobot;
+  robot: RobotConnection;
   enabled: boolean;
   onError?: (error: string) => void;
 }
@@ -42,6 +42,7 @@ export interface UseTeleoperationResult {
   goToHome: () => Promise<void>;
   simulateKeyPress: (key: string) => void;
   simulateKeyRelease: (key: string) => void;
+  moveMotorToPosition: (motorIndex: number, position: number) => Promise<void>;
 }
 
 const MOTOR_CONFIGS: MotorConfig[] = [
@@ -116,7 +117,8 @@ const KEYBOARD_CONTROLS = {
   d: { motorIndex: 3, direction: 1, description: "Wrist flex right" },
   q: { motorIndex: 4, direction: -1, description: "Wrist roll left" },
   e: { motorIndex: 4, direction: 1, description: "Wrist roll right" },
-  " ": { motorIndex: 5, direction: 1, description: "Gripper open/close" },
+  o: { motorIndex: 5, direction: 1, description: "Gripper open" },
+  c: { motorIndex: 5, direction: -1, description: "Gripper close" },
   Escape: { motorIndex: -1, direction: 0, description: "Emergency stop" },
 };
 
@@ -471,6 +473,35 @@ export function useTeleoperation({
     [isActive]
   );
 
+  const moveMotorToPosition = useCallback(
+    async (motorIndex: number, position: number) => {
+      if (!connection.isConnected) {
+        return;
+      }
+
+      try {
+        await connection.writeMotorPosition(motorIndex + 1, position);
+
+        // Update internal state
+        motorPositionsRef.current[motorIndex] = position;
+
+        setMotorConfigs((prev) =>
+          prev.map((config, index) => ({
+            ...config,
+            currentPosition:
+              index === motorIndex ? position : config.currentPosition,
+          }))
+        );
+      } catch (error) {
+        console.warn(
+          `Failed to move motor ${motorIndex + 1} to position ${position}:`,
+          error
+        );
+      }
+    },
+    [connection.isConnected, connection.writeMotorPosition]
+  );
+
   return {
     isConnected: connection.isConnected,
     isActive,
@@ -482,5 +513,6 @@ export function useTeleoperation({
     goToHome,
     simulateKeyPress,
     simulateKeyRelease,
+    moveMotorToPosition,
   };
 }

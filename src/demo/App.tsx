@@ -1,10 +1,10 @@
 import React, { useState } from "react";
 import { Home } from "./pages/Home";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import type { ConnectedRobot } from "./types";
+import type { RobotConnection } from "../lerobot/web/find_port.js";
 
 export function App() {
-  const [connectedRobots, setConnectedRobots] = useState<ConnectedRobot[]>([]);
+  const [connectedRobots, setConnectedRobots] = useState<RobotConnection[]>([]);
 
   return (
     <ErrorBoundary>

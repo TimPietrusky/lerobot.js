@@ -12,12 +12,12 @@ import { PortManager } from "../components/PortManager";
 import { CalibrationPanel } from "../components/CalibrationPanel";
 import { TeleoperationPanel } from "../components/TeleoperationPanel";
 import { isWebSerialSupported } from "../../lerobot/web/calibrate";
-import type { ConnectedRobot } from "../types";
+import type { RobotConnection } from "../../lerobot/web/find_port.js";
 
 interface HomeProps {
   onGetStarted: () => void;
-  connectedRobots: ConnectedRobot[];
-  onConnectedRobotsChange: (robots: ConnectedRobot[]) => void;
+  connectedRobots: RobotConnection[];
+  onConnectedRobotsChange: (robots: RobotConnection[]) => void;
 }
 
 export function Home({
@@ -26,9 +26,9 @@ export function Home({
   onConnectedRobotsChange,
 }: HomeProps) {
   const [calibratingRobot, setCalibratingRobot] =
-    useState<ConnectedRobot | null>(null);
+    useState<RobotConnection | null>(null);
   const [teleoperatingRobot, setTeleoperatingRobot] =
-    useState<ConnectedRobot | null>(null);
+    useState<RobotConnection | null>(null);
   const isSupported = isWebSerialSupported();
 
   const handleCalibrate = (
@@ -43,7 +43,7 @@ export function Home({
     }
   };
 
-  const handleTeleoperate = (robot: ConnectedRobot) => {
+  const handleTeleoperate = (robot: RobotConnection) => {
     setTeleoperatingRobot(robot);
   };
 

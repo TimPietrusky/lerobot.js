@@ -1,40 +1,22 @@
 /**
- * Shared Motor Communication Utilities
- * Proven patterns from calibrate.ts for consistent motor communication
- * Used by both calibration and teleoperation
+ * Motor Communication Utilities
+ * Proven patterns for STS3215 motor reading and writing operations
  */
 
+import { STS3215_PROTOCOL } from "./sts3215-protocol.js";
+
+/**
+ * Interface for motor communication port
+ * Compatible with both WebSerialPortWrapper and RobotConnectionManager
+ */
 export interface MotorCommunicationPort {
   write(data: Uint8Array): Promise<void>;
   read(timeout?: number): Promise<Uint8Array>;
 }
 
 /**
- * STS3215 Protocol Constants
- * Single source of truth for all motor communication
- */
-export const STS3215_PROTOCOL = {
-  // Register addresses
-  PRESENT_POSITION_ADDRESS: 56,
-  GOAL_POSITION_ADDRESS: 42,
-  HOMING_OFFSET_ADDRESS: 31,
-  MIN_POSITION_LIMIT_ADDRESS: 9,
-  MAX_POSITION_LIMIT_ADDRESS: 11,
-
-  // Protocol constants
-  RESOLUTION: 4096, // 12-bit resolution (0-4095)
-  SIGN_MAGNITUDE_BIT: 11, // Bit 11 is sign bit for Homing_Offset encoding
-
-  // Communication timing (proven from calibration)
-  WRITE_TO_READ_DELAY: 10,
-  RETRY_DELAY: 20,
-  INTER_MOTOR_DELAY: 10,
-  MAX_RETRIES: 3,
-} as const;
-
-/**
  * Read single motor position with PROVEN retry logic
- * Reuses exact patterns from calibrate.ts
+ * Extracted from calibrate.ts with all proven timing and retry patterns
  */
 export async function readMotorPosition(
   port: MotorCommunicationPort,
@@ -94,13 +76,7 @@ export async function readMotorPosition(
           if (id === motorId && error === 0) {
             const position = response[5] | (response[6] << 8);
             return position;
-          } else if (id === motorId && error !== 0) {
-            // Motor error, retry
-          } else {
-            // Wrong response ID, retry
           }
-        } else {
-          // Short response, retry
         }
       } catch (readError) {
         // Read timeout, retry
@@ -117,7 +93,6 @@ export async function readMotorPosition(
     // If all attempts failed, return null
     return null;
   } catch (error) {
-    console.warn(`Failed to read motor ${motorId} position:`, error);
     return null;
   }
 }
@@ -155,7 +130,7 @@ export async function readAllMotorPositions(
 }
 
 /**
- * Write motor position with error handling
+ * Write motor goal position
  */
 export async function writeMotorPosition(
   port: MotorCommunicationPort,
@@ -237,30 +212,71 @@ export async function writeMotorRegister(
 }
 
 /**
- * Sign-magnitude encoding functions (from calibrate.ts)
+ * Lock a motor (motor will hold its position and resist movement)
  */
-export function encodeSignMagnitude(
-  value: number,
-  signBitIndex: number = STS3215_PROTOCOL.SIGN_MAGNITUDE_BIT
-): number {
-  const maxMagnitude = (1 << signBitIndex) - 1;
-  const magnitude = Math.abs(value);
-
-  if (magnitude > maxMagnitude) {
-    throw new Error(
-      `Magnitude ${magnitude} exceeds ${maxMagnitude} (max for signBitIndex=${signBitIndex})`
-    );
-  }
-
-  const directionBit = value < 0 ? 1 : 0;
-  return (directionBit << signBitIndex) | magnitude;
+export async function lockMotor(
+  port: MotorCommunicationPort,
+  motorId: number
+): Promise<void> {
+  await writeMotorRegister(
+    port,
+    motorId,
+    STS3215_PROTOCOL.TORQUE_ENABLE_ADDRESS,
+    1
+  );
+  // Small delay for command processing
+  await new Promise((resolve) =>
+    setTimeout(resolve, STS3215_PROTOCOL.WRITE_TO_READ_DELAY)
+  );
 }
 
-export function decodeSignMagnitude(
-  encodedValue: number,
-  signBitIndex: number = STS3215_PROTOCOL.SIGN_MAGNITUDE_BIT
-): number {
-  const signBit = (encodedValue >> signBitIndex) & 1;
-  const magnitude = encodedValue & ((1 << signBitIndex) - 1);
-  return signBit ? -magnitude : magnitude;
+/**
+ * Release a motor (motor can be moved freely by hand)
+ */
+export async function releaseMotor(
+  port: MotorCommunicationPort,
+  motorId: number
+): Promise<void> {
+  await writeMotorRegister(
+    port,
+    motorId,
+    STS3215_PROTOCOL.TORQUE_ENABLE_ADDRESS,
+    0
+  );
+  // Small delay for command processing
+  await new Promise((resolve) =>
+    setTimeout(resolve, STS3215_PROTOCOL.WRITE_TO_READ_DELAY)
+  );
+}
+
+/**
+ * Release motors (motors can be moved freely - perfect for calibration)
+ */
+export async function releaseMotors(
+  port: MotorCommunicationPort,
+  motorIds: number[]
+): Promise<void> {
+  for (const motorId of motorIds) {
+    await releaseMotor(port, motorId);
+    // Small delay between motors
+    await new Promise((resolve) =>
+      setTimeout(resolve, STS3215_PROTOCOL.INTER_MOTOR_DELAY)
+    );
+  }
+}
+
+/**
+ * Lock motors (motors will hold their positions - perfect after calibration)
+ */
+export async function lockMotors(
+  port: MotorCommunicationPort,
+  motorIds: number[]
+): Promise<void> {
+  for (const motorId of motorIds) {
+    await lockMotor(port, motorId);
+    // Small delay between motors
+    await new Promise((resolve) =>
+      setTimeout(resolve, STS3215_PROTOCOL.INTER_MOTOR_DELAY)
+    );
+  }
 }

@@ -10,7 +10,7 @@ import {
   readAllMotorPositions as readAllMotorPositionsUtil,
   writeMotorRegister,
   type MotorCommunicationPort,
-} from "./motor-utils.js";
+} from "./utils/motor-communication.js";
 
 export interface RobotConnectionState {
   isConnected: boolean;

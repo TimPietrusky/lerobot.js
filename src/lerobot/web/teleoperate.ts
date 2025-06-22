@@ -58,7 +58,8 @@ export const KEYBOARD_CONTROLS = {
   // Wrist roll and gripper
   q: { motor: "wrist_roll", direction: -1, description: "Wrist roll left" },
   e: { motor: "wrist_roll", direction: 1, description: "Wrist roll right" },
-  " ": { motor: "gripper", direction: 1, description: "Gripper toggle" },
+  o: { motor: "gripper", direction: 1, description: "Gripper open" },
+  c: { motor: "gripper", direction: -1, description: "Gripper close" },
 
   // Emergency stop
   Escape: {
