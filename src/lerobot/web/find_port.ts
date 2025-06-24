@@ -29,30 +29,15 @@
  */
 
 import { getRobotConnectionManager } from "./robot-connection.js";
+import type {
+  RobotConnection,
+  RobotConfig,
+  SerialPort,
+} from "./types/robot-connection.js";
 
 /**
- * Type definitions for WebSerial API (not yet in all TypeScript libs)
+ * Extended WebSerial API type definitions
  */
-interface SerialPort {
-  readonly readable: ReadableStream;
-  readonly writable: WritableStream;
-  getInfo(): SerialPortInfo;
-  open(options: SerialOptions): Promise<void>;
-  close(): Promise<void>;
-}
-
-interface SerialPortInfo {
-  usbVendorId?: number;
-  usbProductId?: number;
-}
-
-interface SerialOptions {
-  baudRate: number;
-  dataBits?: number;
-  stopBits?: number;
-  parity?: "none" | "even" | "odd";
-}
-
 interface Serial extends EventTarget {
   getPorts(): Promise<SerialPort[]>;
   requestPort(options?: SerialPortRequestOptions): Promise<SerialPort>;
@@ -71,43 +56,6 @@ declare global {
   interface Navigator {
     serial: Serial;
   }
-}
-
-/**
- * Unified robot connection interface used across all functions
- * This same object works for findPort, calibrate, teleoperate, etc.
- * Includes all fields needed by demo and other applications
- */
-export interface RobotConnection {
-  port: SerialPort;
-  name: string; // Display name for UI
-  isConnected: boolean; // Connection status
-  robotType?: "so100_follower" | "so100_leader"; // Optional until user configures
-  robotId?: string; // Optional until user configures
-  serialNumber: string; // Always required for identification
-  error?: string; // Error message if connection failed
-  usbMetadata?: {
-    // USB device information
-    vendorId: string;
-    productId: string;
-    serialNumber: string;
-    manufacturerName: string;
-    productName: string;
-    usbVersionMajor?: number;
-    usbVersionMinor?: number;
-    deviceClass?: number;
-    deviceSubclass?: number;
-    deviceProtocol?: number;
-  };
-}
-
-/**
- * Minimal robot config for finding/connecting to specific robots
- */
-export interface RobotConfig {
-  robotType: "so100_follower" | "so100_leader";
-  robotId: string;
-  serialNumber: string;
 }
 
 /**
@@ -366,6 +314,3 @@ export async function findPort(
     },
   };
 }
-
-// Export the main function (renamed from findPortWeb)
-export { findPort as findPortWeb }; // Backward compatibility alias

@@ -1,14 +1,10 @@
 /**
  * Web calibration functionality using Web Serial API
- * Minimal library - does calibration, user handles storage/UI/etc.
+ * Simple library API - pass in robotConnection, get calibration results
  *
- * Currently supports SO-100 robots. Other robot types can be added by:
- * 1. Creating robot-specific config files in ./robots/
- * 2. Extending the calibrate() function to accept different robot types
- * 3. Adding robot-specific protocol configurations
+ * Handles different robot types internally - users don't need to know about configs
  */
 
-import { createSO100Config } from "./robots/so100_config.js";
 import { WebSerialPortWrapper } from "./utils/serial-port-wrapper.js";
 import {
   readAllMotorPositions,
@@ -19,33 +15,11 @@ import {
   setHomingOffsets,
   writeHardwarePositionLimits,
 } from "./utils/motor-calibration.js";
-import type { RobotConnection } from "./find_port.js";
+import { createSO100Config } from "./robots/so100_config.js";
+import type { RobotConnection } from "./types/robot-connection.js";
 
-/**
- * Device calibration configuration interface
- * Currently designed for SO-100, but can be extended for other robot types
- */
-interface WebCalibrationConfig {
-  deviceType: "so100_follower" | "so100_leader";
-  port: WebSerialPortWrapper;
-  motorNames: string[];
-  motorIds: number[];
-  driveModes: number[];
-
-  // Protocol-specific configuration
-  protocol: {
-    resolution: number;
-    homingOffsetAddress: number;
-    homingOffsetLength: number;
-    presentPositionAddress: number;
-    presentPositionLength: number;
-    minPositionLimitAddress: number;
-    minPositionLimitLength: number;
-    maxPositionLimitAddress: number;
-    maxPositionLimitLength: number;
-    signMagnitudeBit: number;
-  };
-}
+// Import shared robot hardware configuration interface
+import type { RobotHardwareConfig } from "./types/robot-config.js";
 
 /**
  * Calibration results structure matching Python lerobot format exactly
@@ -149,25 +123,33 @@ async function recordRangesOfMotion(
 }
 
 /**
- * Create SO-100 web configuration
+ * Apply robot-specific range adjustments
+ * Different robot types may have special cases (like continuous rotation motors)
  */
-function createSO100WebConfig(
-  deviceType: "so100_follower" | "so100_leader",
-  port: WebSerialPortWrapper
-): WebCalibrationConfig {
-  const so100Config = createSO100Config(deviceType);
+function applyRobotSpecificRangeAdjustments(
+  robotType: string,
+  protocol: { resolution: number },
+  rangeMins: { [motor: string]: number },
+  rangeMaxes: { [motor: string]: number }
+): void {
+  // SO-100 specific: wrist_roll is a continuous rotation motor
+  if (robotType.startsWith("so100") && rangeMins["wrist_roll"] !== undefined) {
+    // The wrist_roll is a continuous rotation motor that should use the full
+    // 0-4095 range regardless of what the user recorded during calibration.
+    // This matches the hardware specification and Python lerobot behavior.
+    rangeMins["wrist_roll"] = 0;
+    rangeMaxes["wrist_roll"] = protocol.resolution - 1;
+  }
 
-  return {
-    ...so100Config,
-    port,
-  };
+  // Future robot types can add their own specific adjustments here
+  // if (robotType.startsWith('newrobot') && rangeMins["special_joint"] !== undefined) {
+  //   rangeMins["special_joint"] = 0;
+  //   rangeMaxes["special_joint"] = 2048;
+  // }
 }
 
 /**
- * Main calibrate function - minimal library API
- * Currently supports SO-100 robots (follower and leader)
- *
- * Takes a unified RobotConnection object from findPort()
+ * Main calibrate function - simple API, handles robot types internally
  */
 export async function calibrate(
   robotConnection: RobotConnection,
@@ -187,8 +169,13 @@ export async function calibrate(
   const port = new WebSerialPortWrapper(robotConnection.port);
   await port.initialize();
 
-  // Get SO-100 specific calibration configuration
-  const config = createSO100WebConfig(robotConnection.robotType, port);
+  // Get robot-specific configuration (extensible - add new robot types here)
+  let config: RobotHardwareConfig;
+  if (robotConnection.robotType.startsWith("so100")) {
+    config = createSO100Config(robotConnection.robotType);
+  } else {
+    throw new Error(`Unsupported robot type: ${robotConnection.robotType}`);
+  }
 
   let shouldStop = false;
   const stopFunction = () => shouldStop;
@@ -198,30 +185,31 @@ export async function calibrate(
     // Step 1: Set homing offsets (automatic)
     options?.onProgress?.("⚙️ Setting motor homing offsets");
     const homingOffsets = await setHomingOffsets(
-      config.port,
+      port,
       config.motorIds,
       config.motorNames
     );
 
     // Step 2: Record ranges of motion with live updates
     const { rangeMins, rangeMaxes } = await recordRangesOfMotion(
-      config.port,
+      port,
       config.motorIds,
       config.motorNames,
       stopFunction,
       options?.onLiveUpdate
     );
 
-    // Step 3: Set special range for wrist_roll (full turn motor)
-    // The wrist_roll is a continuous rotation motor that should use the full
-    // 0-4095 range regardless of what the user recorded during calibration.
-    // This matches the hardware specification and Python lerobot behavior.
-    rangeMins["wrist_roll"] = 0;
-    rangeMaxes["wrist_roll"] = 4095;
+    // Step 3: Apply robot-specific range adjustments
+    applyRobotSpecificRangeAdjustments(
+      robotConnection.robotType!,
+      config.protocol,
+      rangeMins,
+      rangeMaxes
+    );
 
     // Step 4: Write hardware position limits to motors
     await writeHardwarePositionLimits(
-      config.port,
+      port,
       config.motorIds,
       config.motorNames,
       rangeMins,

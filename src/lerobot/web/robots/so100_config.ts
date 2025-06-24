@@ -1,7 +1,9 @@
 /**
- * SO-100 specific configuration for web calibration
+ * SO-100 specific hardware configuration
  * Matches Node.js SO-100 config structure and Python lerobot exactly
  */
+
+import type { RobotHardwareConfig } from "../types/robot-config.js";
 
 /**
  * STS3215 Protocol Configuration for SO-100 devices
@@ -38,16 +40,60 @@ export const SO100_CONFIG = {
 };
 
 /**
- * Create SO-100 calibration configuration
+ * SO-100 Keyboard Controls for Teleoperation
+ * Robot-specific mapping optimized for SO-100 joint layout
+ */
+export const SO100_KEYBOARD_CONTROLS = {
+  // Shoulder controls
+  ArrowUp: { motor: "shoulder_lift", direction: 1, description: "Shoulder up" },
+  ArrowDown: {
+    motor: "shoulder_lift",
+    direction: -1,
+    description: "Shoulder down",
+  },
+  ArrowLeft: {
+    motor: "shoulder_pan",
+    direction: -1,
+    description: "Shoulder left",
+  },
+  ArrowRight: {
+    motor: "shoulder_pan",
+    direction: 1,
+    description: "Shoulder right",
+  },
+
+  // WASD controls
+  w: { motor: "elbow_flex", direction: 1, description: "Elbow flex" },
+  s: { motor: "elbow_flex", direction: -1, description: "Elbow extend" },
+  a: { motor: "wrist_flex", direction: -1, description: "Wrist down" },
+  d: { motor: "wrist_flex", direction: 1, description: "Wrist up" },
+
+  // Wrist roll and gripper
+  q: { motor: "wrist_roll", direction: -1, description: "Wrist roll left" },
+  e: { motor: "wrist_roll", direction: 1, description: "Wrist roll right" },
+  o: { motor: "gripper", direction: 1, description: "Gripper open" },
+  c: { motor: "gripper", direction: -1, description: "Gripper close" },
+
+  // Emergency stop
+  Escape: {
+    motor: "emergency_stop",
+    direction: 0,
+    description: "Emergency stop",
+  },
+} as const;
+
+/**
+ * Create SO-100 hardware configuration
  */
 export function createSO100Config(
   deviceType: "so100_follower" | "so100_leader"
-) {
+): RobotHardwareConfig {
   return {
     deviceType,
     motorNames: SO100_CONFIG.motorNames,
     motorIds: SO100_CONFIG.motorIds,
     driveModes: SO100_CONFIG.driveModes,
+    keyboardControls: SO100_KEYBOARD_CONTROLS,
     protocol: WEB_STS3215_PROTOCOL,
   };
 }

@@ -18,7 +18,7 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import { isWebSerialSupported } from "../../lerobot/web/calibrate";
-import type { RobotConnection } from "../../lerobot/web/find_port.js";
+import type { RobotConnection } from "../../lerobot/web/types/robot-connection.js";
 
 /**
  * Type definitions for WebSerial API (missing from TypeScript)

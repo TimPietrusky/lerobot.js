@@ -12,7 +12,7 @@ import { PortManager } from "../components/PortManager";
 import { CalibrationPanel } from "../components/CalibrationPanel";
 import { TeleoperationPanel } from "../components/TeleoperationPanel";
 import { isWebSerialSupported } from "../../lerobot/web/calibrate";
-import type { RobotConnection } from "../../lerobot/web/find_port.js";
+import type { RobotConnection } from "../../lerobot/web/types/robot-connection.js";
 
 interface HomeProps {
   onGetStarted: () => void;

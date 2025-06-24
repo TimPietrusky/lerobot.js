@@ -18,7 +18,7 @@ import { releaseMotors } from "../../lerobot/web/utils/motor-communication.js";
 import { WebSerialPortWrapper } from "../../lerobot/web/utils/serial-port-wrapper.js";
 import { createSO100Config } from "../../lerobot/web/robots/so100_config.js";
 import { CalibrationModal } from "./CalibrationModal";
-import type { RobotConnection } from "../../lerobot/web/find_port.js";
+import type { RobotConnection } from "../../lerobot/web/types/robot-connection.js";
 
 interface CalibrationPanelProps {
   robot: RobotConnection;
@@ -104,16 +104,8 @@ export function CalibrationPanel({ robot, onFinish }: CalibrationPanelProps) {
       setIsCalibrating(true);
       initializeMotorData();
 
-      // Use the new unified calibrate API - pass the whole robot connection
-      const robotConnection = {
-        port: robot.port,
-        robotType: robot.robotType!,
-        robotId: robot.robotId || `${robot.robotType}_1`,
-        serialNumber: robot.serialNumber || `unknown_${Date.now()}`,
-        connected: robot.isConnected,
-      } as any; // Type assertion to work around SerialPort type differences
-
-      const process = await calibrate(robotConnection, {
+      // Use the simple calibrate API - just pass the robot connection
+      const process = await calibrate(robot, {
         onLiveUpdate: (data) => {
           setMotorData(data);
           setStatus(

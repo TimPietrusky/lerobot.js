@@ -1,12 +1,17 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Progress } from "./ui/progress";
-import { useTeleoperation } from "../hooks/useTeleoperation";
-import type { RobotConnection } from "../../lerobot/web/find_port.js";
-import { KEYBOARD_CONTROLS } from "../../lerobot/web/teleoperate";
+import {
+  teleoperate,
+  type TeleoperationProcess,
+  type TeleoperationState,
+} from "../../lerobot/web/teleoperate.js";
+import { getUnifiedRobotData } from "../lib/unified-storage";
+import type { RobotConnection } from "../../lerobot/web/types/robot-connection.js";
+import { SO100_KEYBOARD_CONTROLS } from "../../lerobot/web/robots/so100_config.js";
 
 interface TeleoperationPanelProps {
   robot: RobotConnection;
@@ -17,40 +22,170 @@ export function TeleoperationPanel({
   robot,
   onClose,
 }: TeleoperationPanelProps) {
-  const [enabled, setEnabled] = useState(false);
+  const [teleoperationState, setTeleoperationState] =
+    useState<TeleoperationState>({
+      isActive: false,
+      motorConfigs: [],
+      lastUpdate: 0,
+      keyStates: {},
+    });
+  const [error, setError] = useState<string | null>(null);
+  const [isInitialized, setIsInitialized] = useState(false);
 
-  const {
-    isConnected,
-    isActive,
-    motorConfigs,
-    keyStates,
-    error,
-    start,
-    stop,
-    simulateKeyPress,
-    simulateKeyRelease,
-    moveMotorToPosition,
-  } = useTeleoperation({
-    robot,
-    enabled,
-    onError: (err: string) => console.error("Teleoperation error:", err),
-  });
+  const teleoperationProcessRef = useRef<TeleoperationProcess | null>(null);
 
-  const handleStart = async () => {
-    setEnabled(true);
-    await start();
+  // Initialize teleoperation process
+  useEffect(() => {
+    const initializeTeleoperation = async () => {
+      if (!robot || !robot.robotType) {
+        setError("No robot configuration available");
+        return;
+      }
+
+      try {
+        // Load calibration data from demo storage (app concern)
+        let calibrationData;
+        if (robot.serialNumber) {
+          const data = getUnifiedRobotData(robot.serialNumber);
+          calibrationData = data?.calibration;
+          if (calibrationData) {
+            console.log("✅ Loaded calibration data for", robot.serialNumber);
+          }
+        }
+
+        // Create teleoperation process using clean library API
+        const process = await teleoperate(robot, {
+          calibrationData,
+          onStateUpdate: (state: TeleoperationState) => {
+            setTeleoperationState(state);
+          },
+        });
+
+        teleoperationProcessRef.current = process;
+        setTeleoperationState(process.getState());
+        setIsInitialized(true);
+        setError(null);
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : "Failed to initialize teleoperation";
+        setError(errorMessage);
+        console.error("❌ Failed to initialize teleoperation:", error);
+      }
+    };
+
+    initializeTeleoperation();
+
+    return () => {
+      // Cleanup on unmount
+      if (teleoperationProcessRef.current) {
+        teleoperationProcessRef.current.disconnect();
+        teleoperationProcessRef.current = null;
+      }
+    };
+  }, [robot]);
+
+  // Keyboard event handlers
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent) => {
+      if (!teleoperationState.isActive || !teleoperationProcessRef.current)
+        return;
+
+      const key = event.key;
+      event.preventDefault();
+      teleoperationProcessRef.current.updateKeyState(key, true);
+    },
+    [teleoperationState.isActive]
+  );
+
+  const handleKeyUp = useCallback(
+    (event: KeyboardEvent) => {
+      if (!teleoperationState.isActive || !teleoperationProcessRef.current)
+        return;
+
+      const key = event.key;
+      event.preventDefault();
+      teleoperationProcessRef.current.updateKeyState(key, false);
+    },
+    [teleoperationState.isActive]
+  );
+
+  // Register keyboard events
+  useEffect(() => {
+    if (teleoperationState.isActive) {
+      window.addEventListener("keydown", handleKeyDown);
+      window.addEventListener("keyup", handleKeyUp);
+
+      return () => {
+        window.removeEventListener("keydown", handleKeyDown);
+        window.removeEventListener("keyup", handleKeyUp);
+      };
+    }
+  }, [teleoperationState.isActive, handleKeyDown, handleKeyUp]);
+
+  const handleStart = () => {
+    if (!teleoperationProcessRef.current) {
+      setError("Teleoperation not initialized");
+      return;
+    }
+
+    try {
+      teleoperationProcessRef.current.start();
+      console.log("🎮 Teleoperation started");
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to start teleoperation";
+      setError(errorMessage);
+    }
   };
 
   const handleStop = () => {
-    stop();
-    setEnabled(false);
+    if (!teleoperationProcessRef.current) return;
+
+    teleoperationProcessRef.current.stop();
+    console.log("🛑 Teleoperation stopped");
   };
 
   const handleClose = () => {
-    stop();
-    setEnabled(false);
+    if (teleoperationProcessRef.current) {
+      teleoperationProcessRef.current.stop();
+    }
     onClose();
   };
+
+  const simulateKeyPress = (key: string) => {
+    if (!teleoperationProcessRef.current) return;
+    teleoperationProcessRef.current.updateKeyState(key, true);
+  };
+
+  const simulateKeyRelease = (key: string) => {
+    if (!teleoperationProcessRef.current) return;
+    teleoperationProcessRef.current.updateKeyState(key, false);
+  };
+
+  const moveMotorToPosition = async (motorIndex: number, position: number) => {
+    if (!teleoperationProcessRef.current) return;
+
+    try {
+      const motorName = teleoperationState.motorConfigs[motorIndex]?.name;
+      if (motorName) {
+        await teleoperationProcessRef.current.moveMotor(motorName, position);
+      }
+    } catch (error) {
+      console.warn(
+        `Failed to move motor ${motorIndex + 1} to position ${position}:`,
+        error
+      );
+    }
+  };
+
+  const isConnected = robot?.isConnected || false;
+  const isActive = teleoperationState.isActive;
+  const motorConfigs = teleoperationState.motorConfigs;
+  const keyStates = teleoperationState.keyStates;
 
   // Virtual keyboard component
   const VirtualKeyboard = () => {
@@ -70,7 +205,9 @@ export function TeleoperationPanel({
       size?: "default" | "sm" | "lg" | "icon";
     }) => {
       const control =
-        KEYBOARD_CONTROLS[keyCode as keyof typeof KEYBOARD_CONTROLS];
+        SO100_KEYBOARD_CONTROLS[
+          keyCode as keyof typeof SO100_KEYBOARD_CONTROLS
+        ];
       const pressed = isKeyPressed(keyCode);
 
       return (

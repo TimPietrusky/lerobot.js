@@ -3,7 +3,18 @@
  * Mirrors the Node.js implementation but adapted for browser environment
  */
 
-import type { UnifiedRobotData } from "../../demo/lib/unified-storage.js";
+import { createSO100Config } from "./robots/so100_config.js";
+import type {
+  RobotHardwareConfig,
+  KeyboardControl,
+} from "./types/robot-config.js";
+import type { RobotConnection } from "./types/robot-connection.js";
+import { WebSerialPortWrapper } from "./utils/serial-port-wrapper.js";
+import {
+  readMotorPosition,
+  writeMotorPosition,
+  type MotorCommunicationPort,
+} from "./utils/motor-communication.js";
 
 /**
  * Motor position and limits for teleoperation
@@ -14,7 +25,6 @@ export interface MotorConfig {
   currentPosition: number;
   minPosition: number;
   maxPosition: number;
-  homePosition: number;
 }
 
 /**
@@ -28,328 +38,103 @@ export interface TeleoperationState {
 }
 
 /**
- * Keyboard control mapping (matches Node.js version)
+ * Teleoperation process control object (matches calibrate pattern)
  */
-export const KEYBOARD_CONTROLS = {
-  // Shoulder controls
-  ArrowUp: { motor: "shoulder_lift", direction: 1, description: "Shoulder up" },
-  ArrowDown: {
-    motor: "shoulder_lift",
-    direction: -1,
-    description: "Shoulder down",
-  },
-  ArrowLeft: {
-    motor: "shoulder_pan",
-    direction: -1,
-    description: "Shoulder left",
-  },
-  ArrowRight: {
-    motor: "shoulder_pan",
-    direction: 1,
-    description: "Shoulder right",
-  },
-
-  // WASD controls
-  w: { motor: "elbow_flex", direction: 1, description: "Elbow flex" },
-  s: { motor: "elbow_flex", direction: -1, description: "Elbow extend" },
-  a: { motor: "wrist_flex", direction: -1, description: "Wrist down" },
-  d: { motor: "wrist_flex", direction: 1, description: "Wrist up" },
-
-  // Wrist roll and gripper
-  q: { motor: "wrist_roll", direction: -1, description: "Wrist roll left" },
-  e: { motor: "wrist_roll", direction: 1, description: "Wrist roll right" },
-  o: { motor: "gripper", direction: 1, description: "Gripper open" },
-  c: { motor: "gripper", direction: -1, description: "Gripper close" },
-
-  // Emergency stop
-  Escape: {
-    motor: "emergency_stop",
-    direction: 0,
-    description: "Emergency stop",
-  },
-} as const;
-
-/**
- * Web Serial Port wrapper for teleoperation
- * Uses the same pattern as calibration - per-operation reader/writer access
- */
-class WebTeleoperationPort {
-  private port: SerialPort;
-
-  constructor(port: SerialPort) {
-    this.port = port;
-  }
-
-  get isOpen(): boolean {
-    return (
-      this.port !== null &&
-      this.port.readable !== null &&
-      this.port.writable !== null
-    );
-  }
-
-  async initialize(): Promise<void> {
-    if (!this.port.readable || !this.port.writable) {
-      throw new Error("Port is not open for teleoperation");
-    }
-    // Port is already open and ready - no need to grab persistent readers/writers
-  }
-
-  async writeMotorPosition(
-    motorId: number,
-    position: number
-  ): Promise<boolean> {
-    if (!this.port.writable) {
-      throw new Error("Port not open for writing");
-    }
-
-    try {
-      // STS3215 Write Goal_Position packet (matches Node.js exactly)
-      const packet = new Uint8Array([
-        0xff,
-        0xff, // Header
-        motorId, // Servo ID
-        0x05, // Length
-        0x03, // Instruction: WRITE_DATA
-        42, // Goal_Position register address
-        position & 0xff, // Position low byte
-        (position >> 8) & 0xff, // Position high byte
-        0x00, // Checksum placeholder
-      ]);
-
-      // Calculate checksum
-      const checksum =
-        ~(
-          motorId +
-          0x05 +
-          0x03 +
-          42 +
-          (position & 0xff) +
-          ((position >> 8) & 0xff)
-        ) & 0xff;
-      packet[8] = checksum;
-
-      // Use per-operation writer like calibration does
-      const writer = this.port.writable.getWriter();
-      try {
-        await writer.write(packet);
-        return true;
-      } finally {
-        writer.releaseLock();
-      }
-    } catch (error) {
-      console.warn(`Failed to write motor ${motorId} position:`, error);
-      return false;
-    }
-  }
-
-  async readMotorPosition(motorId: number): Promise<number | null> {
-    if (!this.port.writable || !this.port.readable) {
-      throw new Error("Port not open for reading/writing");
-    }
-
-    const writer = this.port.writable.getWriter();
-    const reader = this.port.readable.getReader();
-
-    try {
-      // STS3215 Read Present_Position packet
-      const packet = new Uint8Array([
-        0xff,
-        0xff, // Header
-        motorId, // Servo ID
-        0x04, // Length
-        0x02, // Instruction: READ_DATA
-        56, // Present_Position register address
-        0x02, // Data length (2 bytes)
-        0x00, // Checksum placeholder
-      ]);
-
-      const checksum = ~(motorId + 0x04 + 0x02 + 56 + 0x02) & 0xff;
-      packet[7] = checksum;
-
-      // Clear buffer first
-      try {
-        const { value, done } = await reader.read();
-        if (done) return null;
-      } catch (e) {
-        // Buffer was empty, continue
-      }
-
-      await writer.write(packet);
-      await new Promise((resolve) => setTimeout(resolve, 10));
-
-      const { value: response, done } = await reader.read();
-      if (done || !response || response.length < 7) {
-        return null;
-      }
-
-      const id = response[2];
-      const error = response[4];
-
-      if (id === motorId && error === 0) {
-        return response[5] | (response[6] << 8);
-      }
-
-      return null;
-    } catch (error) {
-      console.warn(`Failed to read motor ${motorId} position:`, error);
-      return null;
-    } finally {
-      reader.releaseLock();
-      writer.releaseLock();
-    }
-  }
-
-  async disconnect(): Promise<void> {
-    // Don't close the port itself - just cleanup wrapper
-    // The port is managed by PortManager
-  }
+export interface TeleoperationProcess {
+  start(): void;
+  stop(): void;
+  updateKeyState(key: string, pressed: boolean): void;
+  getState(): TeleoperationState;
+  moveMotor(motorName: string, position: number): Promise<boolean>;
+  setMotorPositions(positions: {
+    [motorName: string]: number;
+  }): Promise<boolean>;
+  disconnect(): Promise<void>;
 }
 
 /**
- * Load calibration data from unified storage with fallback to defaults
- * Improved version that properly loads and applies calibration ranges
+ * Create motor configurations from robot hardware config
+ * Pure function - converts robot specs to motor configs with defaults
  */
-export function loadCalibrationConfig(serialNumber: string): MotorConfig[] {
-  // Default SO-100 configuration (matches Node.js defaults)
-  const defaultConfigs: MotorConfig[] = [
-    {
-      id: 1,
-      name: "shoulder_pan",
-      currentPosition: 2048,
-      minPosition: 1024,
-      maxPosition: 3072,
-      homePosition: 2048,
-    },
-    {
-      id: 2,
-      name: "shoulder_lift",
-      currentPosition: 2048,
-      minPosition: 1024,
-      maxPosition: 3072,
-      homePosition: 2048,
-    },
-    {
-      id: 3,
-      name: "elbow_flex",
-      currentPosition: 2048,
-      minPosition: 1024,
-      maxPosition: 3072,
-      homePosition: 2048,
-    },
-    {
-      id: 4,
-      name: "wrist_flex",
-      currentPosition: 2048,
-      minPosition: 1024,
-      maxPosition: 3072,
-      homePosition: 2048,
-    },
-    {
-      id: 5,
-      name: "wrist_roll",
-      currentPosition: 2048,
-      minPosition: 1024,
-      maxPosition: 3072,
-      homePosition: 2048,
-    },
-    {
-      id: 6,
-      name: "gripper",
-      currentPosition: 2048,
-      minPosition: 1024,
-      maxPosition: 3072,
-      homePosition: 2048,
-    },
-  ];
+function createMotorConfigsFromRobotConfig(
+  robotConfig: RobotHardwareConfig
+): MotorConfig[] {
+  return robotConfig.motorNames.map((name: string, i: number) => ({
+    id: robotConfig.motorIds[i],
+    name,
+    currentPosition: 2048,
+    minPosition: 1024,
+    maxPosition: 3072,
+  }));
+}
 
-  try {
-    // Load from unified storage
-    const unifiedKey = `lerobotjs-${serialNumber}`;
-    const unifiedDataRaw = localStorage.getItem(unifiedKey);
+/**
+ * Apply calibration data to motor configurations
+ * Pure function - takes calibration data as parameter
+ */
+export function applyCalibrationToMotorConfigs(
+  defaultConfigs: MotorConfig[],
+  calibrationData: { [motorName: string]: any }
+): MotorConfig[] {
+  return defaultConfigs.map((defaultConfig) => {
+    const calibData = calibrationData[defaultConfig.name];
 
-    if (!unifiedDataRaw) {
-      console.log(
-        `No calibration data found for ${serialNumber}, using defaults`
-      );
-      return defaultConfigs;
+    if (
+      calibData &&
+      typeof calibData === "object" &&
+      "id" in calibData &&
+      "range_min" in calibData &&
+      "range_max" in calibData
+    ) {
+      // Use calibrated values but keep current position as default
+      return {
+        ...defaultConfig,
+        id: calibData.id,
+        minPosition: calibData.range_min,
+        maxPosition: calibData.range_max,
+      };
     }
 
-    const unifiedData: UnifiedRobotData = JSON.parse(unifiedDataRaw);
-
-    if (!unifiedData.calibration) {
-      console.log(
-        `No calibration in unified data for ${serialNumber}, using defaults`
-      );
-      return defaultConfigs;
-    }
-
-    // Map calibration data to motor configs
-    const calibratedConfigs: MotorConfig[] = defaultConfigs.map(
-      (defaultConfig) => {
-        const calibData = (unifiedData.calibration as any)?.[
-          defaultConfig.name
-        ];
-
-        if (
-          calibData &&
-          typeof calibData === "object" &&
-          "id" in calibData &&
-          "range_min" in calibData &&
-          "range_max" in calibData
-        ) {
-          // Use calibrated values but keep current position as default
-          return {
-            ...defaultConfig,
-            id: calibData.id,
-            minPosition: calibData.range_min,
-            maxPosition: calibData.range_max,
-            homePosition: Math.floor(
-              (calibData.range_min + calibData.range_max) / 2
-            ),
-          };
-        }
-
-        return defaultConfig;
-      }
-    );
-
-    console.log(`✅ Loaded calibration data for ${serialNumber}`);
-    return calibratedConfigs;
-  } catch (error) {
-    console.warn(`Failed to load calibration for ${serialNumber}:`, error);
-    return defaultConfigs;
-  }
+    return defaultConfig;
+  });
 }
 
 /**
  * Web teleoperation controller
+ * Now uses shared utilities instead of custom port handling
  */
 export class WebTeleoperationController {
-  private port: WebTeleoperationPort;
+  private port: MotorCommunicationPort;
   private motorConfigs: MotorConfig[] = [];
+  private keyboardControls: { [key: string]: KeyboardControl } = {};
   private isActive: boolean = false;
   private updateInterval: NodeJS.Timeout | null = null;
   private keyStates: {
     [key: string]: { pressed: boolean; timestamp: number };
   } = {};
+  private onStateUpdate?: (state: TeleoperationState) => void;
 
   // Movement parameters (matches Node.js)
   private readonly STEP_SIZE = 8;
   private readonly UPDATE_RATE = 60; // 60 FPS
-  private readonly KEY_TIMEOUT = 100; // ms
+  private readonly KEY_TIMEOUT = 600; // ms - longer than browser keyboard repeat delay (~500ms)
 
-  constructor(port: SerialPort, serialNumber: string) {
-    this.port = new WebTeleoperationPort(port);
-    this.motorConfigs = loadCalibrationConfig(serialNumber);
+  constructor(
+    port: MotorCommunicationPort,
+    motorConfigs: MotorConfig[],
+    keyboardControls: { [key: string]: KeyboardControl },
+    onStateUpdate?: (state: TeleoperationState) => void
+  ) {
+    this.port = port;
+    this.motorConfigs = motorConfigs;
+    this.keyboardControls = keyboardControls;
+    this.onStateUpdate = onStateUpdate;
   }
 
   async initialize(): Promise<void> {
-    await this.port.initialize();
-
-    // Read current positions
+    // Read current positions using proven utilities
     for (const config of this.motorConfigs) {
-      const position = await this.port.readMotorPosition(config.id);
+      const position = await readMotorPosition(this.port, config.id);
       if (position !== null) {
         config.currentPosition = position;
       }
@@ -401,11 +186,16 @@ export class WebTeleoperationController {
     this.keyStates = {};
 
     console.log("⏹️ Web teleoperation stopped");
+
+    // Notify UI of state change
+    if (this.onStateUpdate) {
+      this.onStateUpdate(this.getState());
+    }
   }
 
   async disconnect(): Promise<void> {
     this.stop();
-    await this.port.disconnect();
+    // No need to manually disconnect - port wrapper handles this
   }
 
   private updateMotorPositions(): void {
@@ -435,7 +225,7 @@ export class WebTeleoperationController {
     const targetPositions: { [motorName: string]: number } = {};
 
     for (const key of activeKeys) {
-      const control = KEYBOARD_CONTROLS[key as keyof typeof KEYBOARD_CONTROLS];
+      const control = this.keyboardControls[key];
       if (!control || control.motor === "emergency_stop") continue;
 
       const motorConfig = this.motorConfigs.find(
@@ -455,16 +245,23 @@ export class WebTeleoperationController {
       );
     }
 
-    // Send motor commands
+    // Send motor commands using proven utilities
     Object.entries(targetPositions).forEach(([motorName, targetPosition]) => {
       const motorConfig = this.motorConfigs.find((m) => m.name === motorName);
       if (motorConfig && targetPosition !== motorConfig.currentPosition) {
-        this.port
-          .writeMotorPosition(motorConfig.id, Math.round(targetPosition))
-          .then((success) => {
-            if (success) {
-              motorConfig.currentPosition = targetPosition;
-            }
+        writeMotorPosition(
+          this.port,
+          motorConfig.id,
+          Math.round(targetPosition)
+        )
+          .then(() => {
+            motorConfig.currentPosition = targetPosition;
+          })
+          .catch((error) => {
+            console.warn(
+              `Failed to write motor ${motorConfig.id} position:`,
+              error
+            );
           });
       }
     });
@@ -480,15 +277,18 @@ export class WebTeleoperationController {
       Math.min(motorConfig.maxPosition, targetPosition)
     );
 
-    const success = await this.port.writeMotorPosition(
-      motorConfig.id,
-      Math.round(clampedPosition)
-    );
-    if (success) {
+    try {
+      await writeMotorPosition(
+        this.port,
+        motorConfig.id,
+        Math.round(clampedPosition)
+      );
       motorConfig.currentPosition = clampedPosition;
+      return true;
+    } catch (error) {
+      console.warn(`Failed to move motor ${motorName}:`, error);
+      return false;
     }
-
-    return success;
   }
 
   async setMotorPositions(positions: {
@@ -502,25 +302,81 @@ export class WebTeleoperationController {
 
     return results.every((result) => result);
   }
-
-  async goToHomePosition(): Promise<boolean> {
-    const homePositions = this.motorConfigs.reduce((acc, config) => {
-      acc[config.name] = config.homePosition;
-      return acc;
-    }, {} as { [motorName: string]: number });
-
-    return this.setMotorPositions(homePositions);
-  }
 }
 
 /**
- * Create teleoperation controller for connected robot
+ * Main teleoperate function - simple API matching calibrate pattern
+ * Handles robot types internally, creates appropriate motor configurations
  */
-export async function createWebTeleoperationController(
-  port: SerialPort,
-  serialNumber: string
-): Promise<WebTeleoperationController> {
-  const controller = new WebTeleoperationController(port, serialNumber);
+export async function teleoperate(
+  robotConnection: RobotConnection,
+  options?: {
+    calibrationData?: { [motorName: string]: any };
+    onStateUpdate?: (state: TeleoperationState) => void;
+  }
+): Promise<TeleoperationProcess> {
+  // Validate required fields
+  if (!robotConnection.robotType) {
+    throw new Error(
+      "Robot type is required for teleoperation. Please configure the robot first."
+    );
+  }
+
+  // Create web serial port wrapper (same pattern as calibrate.ts)
+  const port = new WebSerialPortWrapper(robotConnection.port);
+  await port.initialize();
+
+  // Get robot-specific configuration (same pattern as calibrate.ts)
+  let config: RobotHardwareConfig;
+  if (robotConnection.robotType.startsWith("so100")) {
+    config = createSO100Config(robotConnection.robotType);
+  } else {
+    throw new Error(`Unsupported robot type: ${robotConnection.robotType}`);
+  }
+
+  // Create motor configs from robot hardware specs (single call, no duplication)
+  const defaultMotorConfigs = createMotorConfigsFromRobotConfig(config);
+
+  // Apply calibration data if provided
+  const motorConfigs = options?.calibrationData
+    ? applyCalibrationToMotorConfigs(
+        defaultMotorConfigs,
+        options.calibrationData
+      )
+    : defaultMotorConfigs;
+
+  // Create and initialize controller using shared utilities
+  const controller = new WebTeleoperationController(
+    port,
+    motorConfigs,
+    config.keyboardControls,
+    options?.onStateUpdate
+  );
   await controller.initialize();
-  return controller;
+
+  // Wrap controller in process object (matches calibrate pattern)
+  return {
+    start: () => {
+      controller.start();
+      // Optional state update callback
+      if (options?.onStateUpdate) {
+        const updateLoop = () => {
+          if (controller.getState().isActive) {
+            options.onStateUpdate!(controller.getState());
+            setTimeout(updateLoop, 100); // 10fps state updates
+          }
+        };
+        updateLoop();
+      }
+    },
+    stop: () => controller.stop(),
+    updateKeyState: (key: string, pressed: boolean) =>
+      controller.updateKeyState(key, pressed),
+    getState: () => controller.getState(),
+    moveMotor: (motorName: string, position: number) =>
+      controller.moveMotor(motorName, position),
+    setMotorPositions: (positions: { [motorName: string]: number }) =>
+      controller.setMotorPositions(positions),
+    disconnect: () => controller.disconnect(),
+  };
 }
