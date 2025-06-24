@@ -15,6 +15,9 @@
 - **Serial API Separation**: Always use `serialport` package for Node.js and Web Serial API for browsers - never mix or bridge these incompatible APIs
 - **Minimal Console Output**: Only show essential information - reduce cognitive load for users
 - **Hardware-First Testing**: Always validate with real hardware, not just simulation
+- **Library/Demo Separation**: Standard library handles hardware communication, demos handle storage/UI concerns - never mix these responsibilities
+- **No Code Duplication**: Use shared utils, never reimplement the same functionality across files
+- **Direct Library Usage**: End users call library functions directly (e.g., `calibrate()`, `teleoperate()`) - avoid unnecessary abstraction layers
 
 ## Project Goals
 
@@ -285,22 +288,29 @@ lerobot/
 ##### 5. UI Framework Integration
 
 - **Node.js**: CLI-based interaction (inquirer, chalk)
-- **Web**: React components with real-time hardware data binding
-- **Critical Challenges Solved**:
-  - **React.StrictMode**: Disabled for hardware interfaces (`src/demo/main.tsx`)
-  - **Concurrent Access**: Single controlled serial operation via custom hooks
+- **Web**: React components with direct library function usage
+- **Critical Patterns**:
+  - **Direct Library Usage**: Call `calibrate()`, `teleoperate()` directly in components
+  - **Controlled Hardware Access**: Single controlled serial operation via refs
   - **Real-time Updates**: Hardware callbacks → React state updates
   - **Professional UI**: shadcn Dialog, Card, Button components for robotics interfaces
 - **Architecture Pattern**:
+
   ```typescript
-  // Custom hook for hardware state management
-  function useCalibration(robot: ConnectedRobot) {
-    const [controller, setController] =
-      useState<WebCalibrationController | null>(null);
-    // Stable dependencies to prevent infinite re-renders
-    const startCalibration = useCallback(async () => {
-      /* ... */
-    }, [dependencies]);
+  // Direct library usage in components (NO custom hooks)
+  function CalibrationPanel({ robot }) {
+    const [calibrationState, setCalibrationState] = useState();
+    const calibrationProcessRef = useRef(null);
+
+    useEffect(() => {
+      const initCalibration = async () => {
+        const process = await calibrate(robot, {
+          onLiveUpdate: setCalibrationState,
+        });
+        calibrationProcessRef.current = process;
+      };
+      initCalibration();
+    }, [robot]);
   }
   ```
 
@@ -634,4 +644,224 @@ const STS3215_REGISTERS = {
 - **Loop Time**: < 5ms (when not reading positions)
 - **User Experience**: "Buttery smooth", "fucking working and super perfect"
 
-**Golden Rule**: When you achieve smooth control, NEVER change the step size, delays, or update patterns without extensive testing. These values were optimized through real hardware testing.\*\*
+**Golden Rule**: When you achieve smooth control, NEVER change the step size, delays, or update patterns without extensive testing. These values were optimized through real hardware testing.
+
+## Clean Library Architecture (Critical Lessons)
+
+### Standard Library Design Principles
+
+**End users should be able to use the library with minimal effort and excellent UX:**
+
+```typescript
+// ✅ PERFECT: Clean, self-contained library functions
+const calibrationProcess = await calibrate(robotConnection, options);
+const result = await calibrationProcess.result;
+
+const teleoperationProcess = await teleoperate(robotConnection, options);
+teleoperationProcess.start();
+```
+
+**❌ WRONG: Custom hooks and abstraction layers**
+
+```typescript
+// Never create hooks like useTeleoperation, useCalibration
+// End users shouldn't need React to use robotics functions
+```
+
+### Library vs Demo Separation (CRITICAL)
+
+**Library Responsibilities:**
+
+- Hardware communication protocols
+- Robot control logic
+- Calibration algorithms
+- Motor communication utilities
+- Device-agnostic interfaces
+
+**Demo Responsibilities:**
+
+- localStorage/storage management
+- UI state management
+- JSON file export/import
+- User interface components
+- Application-specific workflows
+
+**❌ WRONG: Mixing concerns**
+
+```typescript
+// NEVER put localStorage in standard library
+export function teleoperate(robot, options) {
+  const calibration = localStorage.getItem("calibration"); // ❌ Demo concern in library
+}
+```
+
+**✅ CORRECT: Clean separation**
+
+```typescript
+// Library: Pure hardware function
+export function teleoperate(robot, options) {
+  // options.calibrationData passed from demo
+}
+
+// Demo: Handles storage
+const calibrationData = getUnifiedRobotData(robot.serialNumber)?.calibration;
+const process = await teleoperate(robot, { calibrationData });
+```
+
+### Utils Structure (No Code Duplication)
+
+**Proper utils organization prevents reimplementation:**
+
+```
+src/lerobot/web/utils/
+├── sts3215-protocol.ts     # Protocol constants
+├── sign-magnitude.ts       # Encoding/decoding
+├── serial-port-wrapper.ts  # Web Serial wrapper
+├── motor-communication.ts  # Core motor operations
+└── motor-calibration.ts    # Calibration functions
+```
+
+**❌ WRONG: Duplicate implementations**
+
+- Multiple files with same motor communication code
+- Calibration logic copied across files
+- Protocol constants scattered everywhere
+
+**✅ CORRECT: Single source of truth**
+
+- Shared utilities with clear responsibilities
+- Import from utils, never reimplement
+- Kebab-case naming for consistency
+
+### Types Organization
+
+**Types belong in dedicated directories, not mixed with business logic:**
+
+```
+src/lerobot/web/types/
+├── robot-connection.ts     # Core connection types
+└── robot-config.ts        # Hardware configuration types
+```
+
+**❌ WRONG: Types in business logic files**
+
+```typescript
+// Never export types from find_port.ts, calibrate.ts, etc.
+import type { RobotConnection } from "./find_port.js"; // ❌ Bad architecture
+```
+
+**✅ CORRECT: Proper type imports**
+
+```typescript
+import type { RobotConnection } from "./types/robot-connection.js"; // ✅ Clean
+```
+
+### Device-Agnostic Architecture
+
+**Standard library must support multiple robot types without hardcoding:**
+
+**✅ CORRECT: Configuration-driven**
+
+```typescript
+// Generic library function
+export async function teleoperate(robotConnection, options) {
+  const config = createRobotConfig(robotConnection.robotType); // Device-specific
+  // ... generic logic using config
+}
+
+// Device-specific configuration
+export function createSO100Config(type) {
+  return {
+    motorIds: [1, 2, 3, 4, 5, 6],
+    keyboardControls: SO100_KEYBOARD_CONTROLS,
+    // ... other device specifics
+  };
+}
+```
+
+**❌ WRONG: Hardcoded device values**
+
+```typescript
+// Never hardcode in generic library
+const KEYBOARD_CONTROLS = { w: "elbow_flex" }; // ❌ SO-100 specific in generic code
+```
+
+### Browser Keyboard Timing (Critical for Teleoperation)
+
+**Browser keyboard repeat pattern:**
+
+1. Initial keydown → immediate
+2. ~500ms delay (browser default)
+3. Rapid repeating
+
+**✅ CORRECT: Account for browser delays**
+
+```typescript
+private readonly KEY_TIMEOUT = 600; // ms - longer than browser repeat delay
+```
+
+**❌ WRONG: Too short timeout**
+
+```typescript
+private readonly KEY_TIMEOUT = 100; // ❌ Causes pause during browser repeat delay
+```
+
+### State Update Callbacks (UI Responsiveness)
+
+**Library must notify UI of state changes, especially when stopping:**
+
+**✅ CORRECT: Always notify on state changes**
+
+```typescript
+stop(): void {
+  this.isActive = false;
+  // ... cleanup ...
+
+  // CRITICAL: Notify UI immediately
+  if (this.onStateUpdate) {
+    this.onStateUpdate(this.getState());
+  }
+}
+```
+
+### Component Architecture (No Custom Hardware Hooks)
+
+**Use library functions directly in components, just like calibration:**
+
+**✅ CORRECT: Direct library usage**
+
+```typescript
+// In component
+const [teleoperationState, setTeleoperationState] =
+  useState<TeleoperationState>();
+const teleoperationProcessRef = useRef<TeleoperationProcess | null>(null);
+
+useEffect(() => {
+  const initTeleoperation = async () => {
+    const process = await teleoperate(robot, {
+      onStateUpdate: setTeleoperationState,
+    });
+    teleoperationProcessRef.current = process;
+  };
+  initTeleoperation();
+}, [robot]);
+```
+
+**❌ WRONG: Custom hooks**
+
+```typescript
+// Never create these - adds unnecessary complexity
+const { start, stop, motorConfigs } = useTeleoperation(robot);
+const { startCalibration, isActive } = useCalibration(robot);
+```
+
+### Architecture Success Metrics
+
+**When architecture is correct:**
+
+- ✅ End users can use library functions directly without React
+- ✅ Adding new robot types requires zero changes to existing code
+- ✅ Demo and library have zero shared dependencies
+- ✅ No code duplication across files
+- ✅ Types are properly organized and importable
+- ✅ UI updates immediately reflect hardware state changes
