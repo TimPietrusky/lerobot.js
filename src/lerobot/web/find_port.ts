@@ -28,62 +28,24 @@
  * await calibrate(storedRobots[0], options);
  */
 
-import { getRobotConnectionManager } from "./robot-connection.js";
+import { getRobotConnectionManager } from "./utils/robot-connection-manager.js";
 import type {
   RobotConnection,
   RobotConfig,
   SerialPort,
 } from "./types/robot-connection.js";
-
-/**
- * Extended WebSerial API type definitions
- */
-interface Serial extends EventTarget {
-  getPorts(): Promise<SerialPort[]>;
-  requestPort(options?: SerialPortRequestOptions): Promise<SerialPort>;
-}
-
-interface SerialPortRequestOptions {
-  filters?: SerialPortFilter[];
-}
-
-interface SerialPortFilter {
-  usbVendorId?: number;
-  usbProductId?: number;
-}
+import type {
+  Serial,
+  SerialPortRequestOptions,
+  SerialPortFilter,
+  FindPortOptions,
+  FindPortProcess,
+} from "./types/port-discovery.js";
 
 declare global {
   interface Navigator {
     serial: Serial;
   }
-}
-
-/**
- * Options for findPort function
- */
-export interface FindPortOptions {
-  // Auto-connect mode: provide robot configs to connect to
-  robotConfigs?: RobotConfig[];
-
-  // Callbacks
-  onMessage?: (message: string) => void;
-  onRequestUserAction?: (
-    message: string,
-    type: "confirm" | "select"
-  ) => Promise<boolean>;
-}
-
-/**
- * Process object returned by findPort
- */
-export interface FindPortProcess {
-  // Result promise - Always returns RobotConnection[] (consistent API)
-  // Interactive mode: single robot in array
-  // Auto-connect mode: all successfully connected robots in array
-  result: Promise<RobotConnection[]>;
-
-  // Control
-  stop: () => void;
 }
 
 /**
@@ -102,34 +64,6 @@ function getPortDisplayName(port: SerialPort): string {
     return `USB Device (${info.usbVendorId}:${info.usbProductId})`;
   }
   return "Serial Device";
-}
-
-/**
- * Try to get serial number from a port by opening and reading device info
- */
-async function getPortSerialNumber(port: SerialPort): Promise<string | null> {
-  try {
-    const wasOpen = port.readable !== null;
-
-    // Open port if not already open
-    if (!wasOpen) {
-      await port.open({ baudRate: 1000000 });
-    }
-
-    // For now, we'll return null since reading serial number from STS3215 motors
-    // requires specific protocol implementation. This is a placeholder for future enhancement.
-    // In practice, serial numbers are typically stored in device metadata or configuration.
-
-    // Close port if we opened it
-    if (!wasOpen && port.readable) {
-      await port.close();
-    }
-
-    return null;
-  } catch (error) {
-    console.warn("Could not read serial number from port:", error);
-    return null;
-  }
 }
 
 /**

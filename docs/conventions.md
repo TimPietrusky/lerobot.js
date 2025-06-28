@@ -18,6 +18,7 @@
 - **Library/Demo Separation**: Standard library handles hardware communication, demos handle storage/UI concerns - never mix these responsibilities
 - **No Code Duplication**: Use shared utils, never reimplement the same functionality across files
 - **Direct Library Usage**: End users call library functions directly (e.g., `calibrate()`, `teleoperate()`) - avoid unnecessary abstraction layers
+- **Comments**: Write about the functionality, not what you did. We only need to know what the code is doing to make it more easy to understand, not a history of the changes
 
 ## Project Goals
 

@@ -1,48 +1,18 @@
 /**
- * Core Robot Connection Manager
- * Single source of truth for robot connections in the web library
- * Provides singleton access to robot ports and connection state
+ * Internal Robot Connection Manager Utility
+ * Singleton manager providing shared robot connection state and communication
+ * Used internally by calibrate, teleoperate, find_port, etc.
+ *
+ * This is an internal utility - users should not import this directly.
+ * Instead, use the public APIs: calibrate(), findPort(), teleoperate()
  */
 
-import {
-  readMotorPosition as readMotorPositionUtil,
-  writeMotorPosition as writeMotorPositionUtil,
-  readAllMotorPositions as readAllMotorPositionsUtil,
-  writeMotorRegister,
-  type MotorCommunicationPort,
-} from "./utils/motor-communication.js";
-
-export interface RobotConnectionState {
-  isConnected: boolean;
-  robotType?: "so100_follower" | "so100_leader";
-  robotId?: string;
-  serialNumber?: string;
-  lastError?: string;
-}
-
-export interface RobotConnectionManager {
-  // State
-  getState(): RobotConnectionState;
-
-  // Connection management
-  connect(
-    port: SerialPort,
-    robotType: string,
-    robotId: string,
-    serialNumber: string
-  ): Promise<void>;
-  disconnect(): Promise<void>;
-
-  // Port access
-  getPort(): SerialPort | null;
-
-  // Serial operations (shared by calibration, teleoperation, etc.)
-  writeData(data: Uint8Array): Promise<void>;
-  readData(timeout?: number): Promise<Uint8Array>;
-
-  // Event system
-  onStateChange(callback: (state: RobotConnectionState) => void): () => void;
-}
+import type { MotorCommunicationPort } from "./motor-communication.js";
+import type { SerialPort } from "../types/robot-connection.js";
+import type {
+  RobotConnectionState,
+  RobotConnectionManager,
+} from "../types/robot-processes.js";
 
 /**
  * Singleton Robot Connection Manager Implementation
@@ -131,12 +101,14 @@ class RobotConnectionManagerImpl implements RobotConnectionManager {
         setTimeout(() => reject(new Error("Read timeout")), timeout);
       });
 
-      const readPromise = reader.read().then((result) => {
-        if (result.done || !result.value) {
-          throw new Error("Read failed - port closed or no data");
-        }
-        return result.value;
-      });
+      const readPromise = reader
+        .read()
+        .then((result: { done: boolean; value?: Uint8Array }) => {
+          if (result.done || !result.value) {
+            throw new Error("Read failed - port closed or no data");
+          }
+          return result.value;
+        });
 
       return await Promise.race([readPromise, timeoutPromise]);
     } finally {
@@ -176,14 +148,10 @@ export function getRobotConnectionManager(): RobotConnectionManager {
 }
 
 /**
- * Utility functions for common robot operations
- * Uses shared motor communication utilities for consistency
+ * Adapter to make robot connection manager compatible with motor-communication utilities
+ * Provides the MotorCommunicationPort interface for the singleton manager
  */
-
-/**
- * Adapter to make robot connection manager compatible with motor utils
- */
-class RobotConnectionManagerAdapter implements MotorCommunicationPort {
+export class RobotConnectionManagerAdapter implements MotorCommunicationPort {
   private manager: RobotConnectionManager;
 
   constructor(manager: RobotConnectionManager) {
@@ -197,32 +165,4 @@ class RobotConnectionManagerAdapter implements MotorCommunicationPort {
   async read(timeout?: number): Promise<Uint8Array> {
     return this.manager.readData(timeout);
   }
-}
-
-export async function writeMotorPosition(
-  motorId: number,
-  position: number
-): Promise<void> {
-  const manager = getRobotConnectionManager();
-  const adapter = new RobotConnectionManagerAdapter(manager);
-
-  return writeMotorPositionUtil(adapter, motorId, position);
-}
-
-export async function readMotorPosition(
-  motorId: number
-): Promise<number | null> {
-  const manager = getRobotConnectionManager();
-  const adapter = new RobotConnectionManagerAdapter(manager);
-
-  return readMotorPositionUtil(adapter, motorId);
-}
-
-export async function readAllMotorPositions(
-  motorIds: number[]
-): Promise<number[]> {
-  const manager = getRobotConnectionManager();
-  const adapter = new RobotConnectionManagerAdapter(manager);
-
-  return readAllMotorPositionsUtil(adapter, motorIds);
 }

@@ -1,6 +1,5 @@
 /**
  * Web teleoperation functionality using Web Serial API
- * Mirrors the Node.js implementation but adapted for browser environment
  */
 
 import { createSO100Config } from "./robots/so100_config.js";
@@ -15,42 +14,11 @@ import {
   writeMotorPosition,
   type MotorCommunicationPort,
 } from "./utils/motor-communication.js";
-
-/**
- * Motor position and limits for teleoperation
- */
-export interface MotorConfig {
-  id: number;
-  name: string;
-  currentPosition: number;
-  minPosition: number;
-  maxPosition: number;
-}
-
-/**
- * Teleoperation state
- */
-export interface TeleoperationState {
-  isActive: boolean;
-  motorConfigs: MotorConfig[];
-  lastUpdate: number;
-  keyStates: { [key: string]: { pressed: boolean; timestamp: number } };
-}
-
-/**
- * Teleoperation process control object (matches calibrate pattern)
- */
-export interface TeleoperationProcess {
-  start(): void;
-  stop(): void;
-  updateKeyState(key: string, pressed: boolean): void;
-  getState(): TeleoperationState;
-  moveMotor(motorName: string, position: number): Promise<boolean>;
-  setMotorPositions(positions: {
-    [motorName: string]: number;
-  }): Promise<boolean>;
-  disconnect(): Promise<void>;
-}
+import type {
+  MotorConfig,
+  TeleoperationState,
+  TeleoperationProcess,
+} from "./types/teleoperation.js";
 
 /**
  * Create motor configurations from robot hardware config

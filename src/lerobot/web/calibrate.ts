@@ -8,7 +8,6 @@
 import { WebSerialPortWrapper } from "./utils/serial-port-wrapper.js";
 import {
   readAllMotorPositions,
-  releaseMotors,
   type MotorCommunicationPort,
 } from "./utils/motor-communication.js";
 import {
@@ -17,42 +16,12 @@ import {
 } from "./utils/motor-calibration.js";
 import { createSO100Config } from "./robots/so100_config.js";
 import type { RobotConnection } from "./types/robot-connection.js";
-
-// Import shared robot hardware configuration interface
 import type { RobotHardwareConfig } from "./types/robot-config.js";
-
-/**
- * Calibration results structure matching Python lerobot format exactly
- */
-export interface WebCalibrationResults {
-  [motorName: string]: {
-    id: number;
-    drive_mode: number;
-    homing_offset: number;
-    range_min: number;
-    range_max: number;
-  };
-}
-
-/**
- * Live calibration data with current positions and ranges
- */
-export interface LiveCalibrationData {
-  [motorName: string]: {
-    current: number;
-    min: number;
-    max: number;
-    range: number;
-  };
-}
-
-/**
- * Calibration process control object
- */
-export interface CalibrationProcess {
-  stop(): void;
-  result: Promise<WebCalibrationResults>;
-}
+import type {
+  WebCalibrationResults,
+  LiveCalibrationData,
+  CalibrationProcess,
+} from "./types/calibration.js";
 
 /**
  * Record ranges of motion with live updates
