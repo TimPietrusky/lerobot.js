@@ -1,0 +1,37 @@
+name: Sync to Hugging Face space
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  sync-to-hub:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Prepare README for HF Space
+        run: |
+          # Create HF Space frontmatter by directly copying from hf_config.yml
+          cat docs/hf_config.yml > README_temp.md
+          echo "" >> README_temp.md
+          cat README.md >> README_temp.md
+          mv README_temp.md README.md
+
+      - name: Configure git
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
+      - name: Commit HF Space README
+        run: |
+          git add README.md
+          git commit -m "Add HF Space frontmatter to README" || echo "No changes to commit"
+
+      - name: Push to hub
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: git push https://NERDDISCO:$HF_TOKEN@huggingface.co/spaces/NERDDISCO/LeRobot.js main --force

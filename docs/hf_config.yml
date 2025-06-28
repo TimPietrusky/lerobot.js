@@ -1,0 +1,11 @@
+---
+title: LeRobot.js
+emoji: 🤖
+colorFrom: blue
+colorTo: green
+sdk: static
+app_build_command: pnpm run build
+app_file: dist/index.html
+pinned: true
+---
+
