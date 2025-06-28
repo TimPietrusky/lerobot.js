@@ -1,8 +1,6 @@
 /**
  * Helper to find the USB port associated with your MotorsBus.
  *
- * Direct port of Python lerobot find_port.py
- *
  * Example:
  * ```
  * npx lerobot find-port

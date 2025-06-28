@@ -1,9 +1,6 @@
 /**
- * Robot configuration types
- * Shared between Node.js and Web implementations
+ * Robot configuration types for Node.js implementation
  */
-
-import type { TeleoperatorConfig } from "../teleoperators/config.js";
 
 export interface RobotConfig {
   type: "so100_follower";
@@ -20,3 +17,7 @@ export interface CalibrateConfig {
   robot?: RobotConfig;
   teleop?: TeleoperatorConfig;
 }
+
+// Re-export from teleoperator-config for convenience
+import type { TeleoperatorConfig } from "./teleoperator-config.js";
+export type { TeleoperatorConfig };

@@ -1,33 +1,15 @@
 /**
  * Robot teleoperation using keyboard control
  *
- * Direct port of Python lerobot teleoperate.py (keyboard portion)
- *
  * Example:
  * ```
  * npx lerobot teleoperate --robot.type=so100_follower --robot.port=COM4 --teleop.type=keyboard
  * ```
  */
 
-import type { RobotConfig } from "./robots/config.js";
 import { createSO100Follower } from "./robots/so100_follower.js";
-import { KeyboardController } from "./keyboard_teleop.js";
-
-/**
- * Teleoperate configuration interface
- * Matches Python lerobot teleoperate argument structure
- */
-export interface TeleoperateConfig {
-  robot: RobotConfig;
-  teleop: TeleoperatorConfig;
-  fps?: number; // Default: 60
-  step_size?: number; // Default: 10 (motor position units)
-  duration_s?: number | null; // Default: null (infinite)
-}
-
-export interface TeleoperatorConfig {
-  type: "keyboard"; // Only keyboard for now, expandable later
-}
+import { KeyboardController } from "./utils/keyboard-teleop.js";
+import type { TeleoperateConfig } from "./types/teleoperation.js";
 
 /**
  * Main teleoperate function
@@ -43,7 +25,6 @@ export async function teleoperate(config: TeleoperateConfig): Promise<void> {
     throw new Error("Only keyboard teleoperation is currently supported");
   }
 
-  const fps = config.fps || 60;
   const stepSize = config.step_size || 25;
   const duration = config.duration_s;
 
@@ -106,7 +87,7 @@ export async function teleoperate(config: TeleoperateConfig): Promise<void> {
     console.log("");
 
     // Start teleoperation control loop
-    await teleoperationLoop(keyboardController, robot, fps, duration || null);
+    await teleoperationLoop(keyboardController, robot, duration || null);
   } catch (error) {
     // Ensure we disconnect even if there's an error
     if (keyboardController) {
@@ -129,12 +110,10 @@ export async function teleoperate(config: TeleoperateConfig): Promise<void> {
 
 /**
  * Main teleoperation control loop
- * Provides real-time position feedback and performance metrics
  */
 async function teleoperationLoop(
   keyboardController: KeyboardController,
   robot: any,
-  fps: number,
   duration: number | null
 ): Promise<void> {
   console.log("Initializing teleoperation...");
@@ -143,7 +122,6 @@ async function teleoperationLoop(
   await keyboardController.start();
 
   const startTime = performance.now();
-  let loopCount = 0;
 
   // Set up graceful shutdown
   let running = true;
@@ -170,36 +148,6 @@ async function teleoperationLoop(
     await robot.disconnect();
     console.log("Teleoperation stopped.");
   }
-}
-
-/**
- * Display current robot status
- * Shows positions, ranges, and performance metrics
- */
-function displayStatus(
-  positions: Record<string, number>,
-  loopCount: number,
-  avgLoopTime: number
-): void {
-  // Clear screen and show current status
-  console.clear();
-  console.log("=== KEYBOARD TELEOPERATION ===");
-  console.log("");
-
-  console.log("Current Positions:");
-  for (const [motor, position] of Object.entries(positions)) {
-    console.log(`${motor}: ${Math.round(position)}`);
-  }
-
-  console.log("");
-  const fps = loopCount > 0 ? 1000 / avgLoopTime : 0;
-  console.log(
-    `Loop: ${avgLoopTime.toFixed(2)}ms (${fps.toFixed(
-      0
-    )} Hz) | Status: Connected`
-  );
-  console.log("");
-  console.log("Use arrow keys, WASD, Q/E, Space to control. ESC to stop.");
 }
 
 /**

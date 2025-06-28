@@ -6,7 +6,7 @@
  */
 
 import { Teleoperator } from "./teleoperator.js";
-import type { TeleoperatorConfig } from "./config.js";
+import type { TeleoperatorConfig } from "../types/teleoperator-config.js";
 
 export class SO100Leader extends Teleoperator {
   constructor(config: TeleoperatorConfig) {

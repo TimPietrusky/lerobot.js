@@ -4,7 +4,7 @@
  * Mirrors Python lerobot device configuration approach
  */
 
-import type { SO100CalibrationConfig } from "./calibration.js";
+import type { SO100CalibrationConfig } from "../types/calibration.js";
 import { SerialPort } from "serialport";
 
 /**

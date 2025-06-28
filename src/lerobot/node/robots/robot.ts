@@ -8,8 +8,8 @@ import { SerialPort } from "serialport";
 import { mkdir, writeFile } from "fs/promises";
 import { existsSync, readFileSync, mkdirSync } from "fs";
 import { join } from "path";
-import type { RobotConfig } from "./config.js";
-import { getCalibrationDir, ROBOTS } from "../constants.js";
+import type { RobotConfig } from "../types/robot-config.js";
+import { getCalibrationDir, ROBOTS } from "../utils/constants.js";
 
 export abstract class Robot {
   protected port: SerialPort | null = null;

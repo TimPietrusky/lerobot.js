@@ -3,7 +3,7 @@
  * Uses Web Serial API for serial communication
  */
 
-import type { RobotConfig } from "../../node/robots/config.js";
+import type { RobotConfig } from "../../node/types/robot-config.js";
 
 // Web Serial API type declarations (minimal for our needs)
 declare global {

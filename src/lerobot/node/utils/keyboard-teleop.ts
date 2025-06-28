@@ -4,7 +4,7 @@
  */
 
 import * as readline from "readline";
-import { SO100Follower } from "./robots/so100_follower.js";
+import { SO100Follower } from "../robots/so100_follower.js";
 
 /**
  * Keyboard controller for robot teleoperation

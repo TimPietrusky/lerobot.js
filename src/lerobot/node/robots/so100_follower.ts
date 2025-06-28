@@ -4,7 +4,7 @@
  */
 
 import { Robot } from "./robot.js";
-import type { RobotConfig } from "./config.js";
+import type { RobotConfig } from "../types/robot-config.js";
 import * as readline from "readline";
 
 export class SO100Follower extends Robot {
