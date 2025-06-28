@@ -1,7 +1,6 @@
 /**
  * Base Robot class for Web platform
  * Uses Web Serial API for serial communication
- * Mirrors Python lerobot/common/robots/robot.py but adapted for browser environment
  */
 
 import type { RobotConfig } from "../../node/robots/config.js";

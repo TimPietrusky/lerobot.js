@@ -1,6 +1,6 @@
 /**
  * Motor Communication Utilities
- * Proven patterns for STS3215 motor reading and writing operations
+ * STS3215 motor reading and writing operations
  */
 
 import { STS3215_PROTOCOL } from "./sts3215-protocol.js";
@@ -15,15 +15,14 @@ export interface MotorCommunicationPort {
 }
 
 /**
- * Read single motor position with PROVEN retry logic
- * Extracted from calibrate.ts with all proven timing and retry patterns
+ * Read single motor position with retry logic
  */
 export async function readMotorPosition(
   port: MotorCommunicationPort,
   motorId: number
 ): Promise<number | null> {
   try {
-    // Create Read Position packet using proven pattern
+    // Create Read Position packet
     const packet = new Uint8Array([
       0xff,
       0xff, // Header
@@ -45,23 +44,23 @@ export async function readMotorPosition(
       ) & 0xff;
     packet[7] = checksum;
 
-    // PROVEN PATTERN: Professional Feetech communication with retry logic
+    // Retry communication with timeouts
     let attempts = 0;
 
     while (attempts < STS3215_PROTOCOL.MAX_RETRIES) {
       attempts++;
 
-      // CRITICAL: Clear any remaining data in buffer first (from calibration lessons)
+      // Clear any remaining data in buffer first
       try {
         await port.read(0); // Non-blocking read to clear buffer
       } catch (e) {
         // Expected - buffer was empty
       }
 
-      // Write command with PROVEN timing
+      // Write command
       await port.write(packet);
 
-      // PROVEN TIMING: Arduino library uses careful timing - Web Serial needs more
+      // Wait for motor response
       await new Promise((resolve) =>
         setTimeout(resolve, STS3215_PROTOCOL.WRITE_TO_READ_DELAY)
       );
@@ -82,7 +81,7 @@ export async function readMotorPosition(
         // Read timeout, retry
       }
 
-      // PROVEN TIMING: Professional timing between attempts
+      // Wait between retry attempts
       if (attempts < STS3215_PROTOCOL.MAX_RETRIES) {
         await new Promise((resolve) =>
           setTimeout(resolve, STS3215_PROTOCOL.RETRY_DELAY)
@@ -98,8 +97,7 @@ export async function readMotorPosition(
 }
 
 /**
- * Read all motor positions with PROVEN patterns
- * Exactly matches calibrate.ts readMotorPositions() function
+ * Read all motor positions
  */
 export async function readAllMotorPositions(
   port: MotorCommunicationPort,
@@ -120,7 +118,7 @@ export async function readAllMotorPositions(
       motorPositions.push(fallback);
     }
 
-    // PROVEN PATTERN: Professional inter-motor delay
+    // Delay between motor reads
     await new Promise((resolve) =>
       setTimeout(resolve, STS3215_PROTOCOL.INTER_MOTOR_DELAY)
     );
@@ -167,7 +165,6 @@ export async function writeMotorPosition(
 
 /**
  * Generic function to write a 2-byte value to a motor register
- * Matches calibrate.ts writeMotorRegister() exactly
  */
 export async function writeMotorRegister(
   port: MotorCommunicationPort,
@@ -200,7 +197,7 @@ export async function writeMotorRegister(
     ) & 0xff;
   packet[8] = checksum;
 
-  // Simple write then read like calibration
+  // Write register value
   await port.write(packet);
 
   // Wait for response (silent unless error)

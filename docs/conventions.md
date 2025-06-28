@@ -19,6 +19,7 @@
 - **No Code Duplication**: Use shared utils, never reimplement the same functionality across files
 - **Direct Library Usage**: End users call library functions directly (e.g., `calibrate()`, `teleoperate()`) - avoid unnecessary abstraction layers
 - **Comments**: Write about the functionality, not what you did. We only need to know what the code is doing to make it more easy to understand, not a history of the changes
+- **No Reference Comments**: Never write comments like "same pattern as calibrate.ts", "matches Node.js", "copied from X", etc. Comments should explain what the code does, not where it came from or what it's similar to
 
 ## Project Goals
 

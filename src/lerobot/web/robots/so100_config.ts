@@ -1,6 +1,5 @@
 /**
  * SO-100 specific hardware configuration
- * Matches Node.js SO-100 config structure and Python lerobot exactly
  */
 
 import type { RobotHardwareConfig } from "../types/robot-config.js";
@@ -35,7 +34,7 @@ export const SO100_CONFIG = {
     "gripper",
   ],
   motorIds: [1, 2, 3, 4, 5, 6],
-  // Python lerobot uses drive_mode=0 for all SO-100 motors
+  // All SO-100 motors use drive_mode=0
   driveModes: [0, 0, 0, 0, 0, 0],
 };
 

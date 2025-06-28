@@ -26,7 +26,7 @@ export const STS3215_PROTOCOL = {
   MIN_POSITION_LIMIT_LENGTH: 2,
   MAX_POSITION_LIMIT_LENGTH: 2,
 
-  // Communication timing (proven from calibration)
+  // Communication timing
   WRITE_TO_READ_DELAY: 10,
   RETRY_DELAY: 20,
   INTER_MOTOR_DELAY: 10,

@@ -82,7 +82,7 @@ export class WebTeleoperationController {
   } = {};
   private onStateUpdate?: (state: TeleoperationState) => void;
 
-  // Movement parameters (matches Node.js)
+  // Movement parameters
   private readonly STEP_SIZE = 8;
   private readonly UPDATE_RATE = 60; // 60 FPS
   private readonly KEY_TIMEOUT = 600; // ms - longer than browser keyboard repeat delay (~500ms)
@@ -100,7 +100,7 @@ export class WebTeleoperationController {
   }
 
   async initialize(): Promise<void> {
-    // Read current positions using proven utilities
+    // Read current motor positions
     for (const config of this.motorConfigs) {
       const position = await readMotorPosition(this.port, config.id);
       if (position !== null) {
@@ -213,7 +213,7 @@ export class WebTeleoperationController {
       );
     }
 
-    // Send motor commands using proven utilities
+    // Send motor commands
     Object.entries(targetPositions).forEach(([motorName, targetPosition]) => {
       const motorConfig = this.motorConfigs.find((m) => m.name === motorName);
       if (motorConfig && targetPosition !== motorConfig.currentPosition) {
@@ -273,7 +273,7 @@ export class WebTeleoperationController {
 }
 
 /**
- * Main teleoperate function - simple API matching calibrate pattern
+ * Main teleoperate function - simple API
  * Handles robot types internally, creates appropriate motor configurations
  */
 export async function teleoperate(
@@ -290,11 +290,11 @@ export async function teleoperate(
     );
   }
 
-  // Create web serial port wrapper (same pattern as calibrate.ts)
+  // Create web serial port wrapper
   const port = new WebSerialPortWrapper(robotConnection.port);
   await port.initialize();
 
-  // Get robot-specific configuration (same pattern as calibrate.ts)
+  // Get robot-specific configuration
   let config: RobotHardwareConfig;
   if (robotConnection.robotType.startsWith("so100")) {
     config = createSO100Config(robotConnection.robotType);
@@ -322,7 +322,7 @@ export async function teleoperate(
   );
   await controller.initialize();
 
-  // Wrap controller in process object (matches calibrate pattern)
+  // Wrap controller in process object
   return {
     start: () => {
       controller.start();

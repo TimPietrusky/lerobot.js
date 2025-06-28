@@ -24,7 +24,7 @@ export interface TeleoperationState {
 }
 
 /**
- * Teleoperation process control object (matches calibrate pattern)
+ * Teleoperation process control object
  */
 export interface TeleoperationProcess {
   start(): void;

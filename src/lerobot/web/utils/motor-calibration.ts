@@ -12,7 +12,7 @@ import {
 } from "./motor-communication.js";
 
 /**
- * Reset homing offsets to 0 for all motors (matches Node.js exactly)
+ * Reset homing offsets to 0 for all motors
  */
 export async function resetHomingOffsets(
   port: MotorCommunicationPort,
@@ -115,7 +115,7 @@ export async function writeHomingOffsetsToMotors(
 }
 
 /**
- * Set homing offsets with immediate writing (matches Node.js exactly)
+ * Set homing offsets with immediate writing
  */
 export async function setHomingOffsets(
   port: MotorCommunicationPort,

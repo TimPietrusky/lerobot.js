@@ -28,7 +28,8 @@
  * await calibrate(storedRobots[0], options);
  */
 
-import { getRobotConnectionManager } from "./utils/robot-connection-manager.js";
+import { WebSerialPortWrapper } from "./utils/serial-port-wrapper.js";
+import { readMotorPosition } from "./utils/motor-communication.js";
 import type {
   RobotConnection,
   RobotConfig,
@@ -146,19 +147,22 @@ async function findPortAutoConnect(
             await port.open({ baudRate: 1000000 });
           }
 
-          // Test connection by trying to communicate
-          const manager = getRobotConnectionManager();
-          await manager.connect(
-            port,
-            config.robotType,
-            config.robotId,
-            config.serialNumber
-          );
+          // Test connection by trying basic motor communication
+          const portWrapper = new WebSerialPortWrapper(port);
+          await portWrapper.initialize();
 
-          matchedPort = port;
-          connected = true;
-          onMessage?.(`✅ Connected to ${config.robotId}`);
-          break;
+          // Try to read from motor ID 1 (most robots have at least one motor)
+          const testPosition = await readMotorPosition(portWrapper, 1);
+
+          // If we can read a position, this is likely a working robot port
+          if (testPosition !== null) {
+            matchedPort = port;
+            connected = true;
+            onMessage?.(`✅ Connected to ${config.robotId}`);
+            break;
+          } else {
+            throw new Error("No motor response - not a robot port");
+          }
         } catch (portError) {
           // This port didn't work, try next one
           console.log(

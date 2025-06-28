@@ -5,7 +5,6 @@
 
 /**
  * Web Serial Port wrapper - direct write/read with immediate lock release
- * Follows Chrome documentation exactly for proper Web Serial API usage
  */
 export class WebSerialPortWrapper {
   private port: SerialPort;

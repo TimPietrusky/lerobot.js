@@ -39,7 +39,7 @@ async function recordRangesOfMotion(
   const rangeMins: { [motor: string]: number } = {};
   const rangeMaxes: { [motor: string]: number } = {};
 
-  // Read actual current positions (matching Python exactly)
+  // Read actual current positions
   const startPositions = await readAllMotorPositions(port, motorIds);
 
   for (let i = 0; i < motorNames.length; i++) {
@@ -105,7 +105,6 @@ function applyRobotSpecificRangeAdjustments(
   if (robotType.startsWith("so100") && rangeMins["wrist_roll"] !== undefined) {
     // The wrist_roll is a continuous rotation motor that should use the full
     // 0-4095 range regardless of what the user recorded during calibration.
-    // This matches the hardware specification and Python lerobot behavior.
     rangeMins["wrist_roll"] = 0;
     rangeMaxes["wrist_roll"] = protocol.resolution - 1;
   }
@@ -185,7 +184,7 @@ export async function calibrate(
       rangeMaxes
     );
 
-    // Step 5: Compile results in Python-compatible format
+    // Step 5: Compile results
     const results: WebCalibrationResults = {};
 
     for (let i = 0; i < config.motorNames.length; i++) {

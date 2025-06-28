@@ -3,7 +3,7 @@
  */
 
 /**
- * Calibration results structure matching Python lerobot format exactly
+ * Calibration results structure
  */
 export interface WebCalibrationResults {
   [motorName: string]: {
