@@ -1,13 +1,21 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { resolve } from "path";
+import { existsSync } from "fs";
 
 export default defineConfig(({ mode }) => {
+  // Check if we're in a workspace environment (has packages/web/src)
+  const isWorkspace = existsSync(resolve(__dirname, "./packages/web/src"));
+
   const baseConfig = {
     plugins: [],
     resolve: {
       alias: {
         "@": resolve(__dirname, "./src"),
+        // Only add workspace alias if in workspace environment
+        ...(isWorkspace && {
+          "@lerobot/web": resolve(__dirname, "./packages/web/src"),
+        }),
       },
     },
   };

@@ -13,12 +13,12 @@ import {
   type WebCalibrationResults,
   type LiveCalibrationData,
   type CalibrationProcess,
-} from "../../lerobot/web/calibrate";
-import { releaseMotors } from "../../lerobot/web/utils/motor-communication.js";
-import { WebSerialPortWrapper } from "../../lerobot/web/utils/serial-port-wrapper.js";
-import { createSO100Config } from "../../lerobot/web/robots/so100_config.js";
+} from "@lerobot/web";
+import { releaseMotors } from "@lerobot/web";
+import { WebSerialPortWrapper } from "@lerobot/web";
+import { createSO100Config } from "@lerobot/web";
 import { CalibrationModal } from "./CalibrationModal";
-import type { RobotConnection } from "../../lerobot/web/types/robot-connection.js";
+import type { RobotConnection } from "@lerobot/web";
 
 interface CalibrationPanelProps {
   robot: RobotConnection;

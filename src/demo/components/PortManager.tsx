@@ -17,8 +17,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "./ui/dialog";
-import { isWebSerialSupported } from "../../lerobot/web/calibrate";
-import type { RobotConnection } from "../../lerobot/web/types/robot-connection.js";
+import { isWebSerialSupported } from "@lerobot/web";
+import type { RobotConnection } from "@lerobot/web";
 
 /**
  * Type definitions for WebSerial API (missing from TypeScript)
@@ -464,7 +464,7 @@ export function PortManager({
       setError(null);
 
       // Use the new findPort API from standard library
-      const { findPort } = await import("../../lerobot/web/find_port.js");
+      const { findPort } = await import("@lerobot/web");
 
       const findPortProcess = await findPort({
         onMessage: (message) => {

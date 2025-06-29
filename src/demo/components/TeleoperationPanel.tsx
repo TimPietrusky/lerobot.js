@@ -7,10 +7,10 @@ import {
   teleoperate,
   type TeleoperationProcess,
   type TeleoperationState,
-} from "../../lerobot/web/teleoperate.js";
+} from "@lerobot/web";
 import { getUnifiedRobotData } from "../lib/unified-storage";
-import type { RobotConnection } from "../../lerobot/web/types/robot-connection.js";
-import { SO100_KEYBOARD_CONTROLS } from "../../lerobot/web/robots/so100_config.js";
+import type { RobotConnection } from "@lerobot/web";
+import { SO100_KEYBOARD_CONTROLS } from "@lerobot/web";
 
 interface TeleoperationPanelProps {
   robot: RobotConnection;

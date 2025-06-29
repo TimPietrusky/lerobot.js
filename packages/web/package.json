@@ -1,0 +1,54 @@
+{
+  "name": "@lerobot/web",
+  "version": "0.1.1",
+  "description": "Web-based robotics control using WebSerial API",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./calibrate": {
+      "import": "./dist/calibrate.js",
+      "types": "./dist/calibrate.d.ts"
+    },
+    "./teleoperate": {
+      "import": "./dist/teleoperate.js",
+      "types": "./dist/teleoperate.d.ts"
+    },
+    "./find-port": {
+      "import": "./dist/find_port.js",
+      "types": "./dist/find_port.d.ts"
+    }
+  },
+  "files": [
+    "dist/**/*",
+    "README.md"
+  ],
+  "keywords": [
+    "robotics",
+    "webserial",
+    "hardware-control",
+    "browser",
+    "typescript"
+  ],
+  "scripts": {
+    "build": "tsc --project tsconfig.build.json",
+    "prepublishOnly": "npm run build"
+  },
+  "peerDependencies": {
+    "typescript": ">=4.5.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/timpietrusky/lerobot.js",
+    "directory": "packages/web"
+  },
+  "license": "Apache-2.0",
+  "author": "Tim Pietrusky",
+  "publishConfig": {
+    "access": "public"
+  }
+}

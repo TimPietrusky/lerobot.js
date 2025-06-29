@@ -13,6 +13,30 @@ jobs:
           fetch-depth: 0
           lfs: true
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build web package
+        run: pnpm --filter "@lerobot/web" run build
+
+      - name: Install web package for demo
+        run: |
+          cd packages/web
+          npm pack
+          cd ../..
+          pnpm add ./packages/web/lerobot-web-*.tgz
+
       - name: Prepare README for HF Space
         run: |
           # Create HF Space frontmatter by directly copying from hf_config.yml

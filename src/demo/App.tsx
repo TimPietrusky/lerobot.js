@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Home } from "./pages/Home";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import type { RobotConnection } from "../lerobot/web/types/robot-connection.js";
+import type { RobotConnection } from "@lerobot/web";
 
 export function App() {
   const [connectedRobots, setConnectedRobots] = useState<RobotConnection[]>([]);

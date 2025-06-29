@@ -4,8 +4,8 @@ import { Alert, AlertDescription } from "../components/ui/alert";
 import { PortManager } from "../components/PortManager";
 import { CalibrationPanel } from "../components/CalibrationPanel";
 import { TeleoperationPanel } from "../components/TeleoperationPanel";
-import { isWebSerialSupported } from "../../lerobot/web/calibrate";
-import type { RobotConnection } from "../../lerobot/web/types/robot-connection.js";
+import { isWebSerialSupported } from "@lerobot/web";
+import type { RobotConnection } from "@lerobot/web";
 
 interface HomeProps {
   connectedRobots: RobotConnection[];
@@ -48,7 +48,7 @@ export function Home({ connectedRobots, onConnectedRobotsChange }: HomeProps) {
             🤖 LeRobot.js
           </h1>
           <p className="text-xl text-gray-600 mb-8">
-            State-of-the-art AI for real-world robotics in JavaScript
+            Robotics for the web and node
           </p>
 
           {!isSupported && (

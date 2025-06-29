@@ -3,6 +3,8 @@
  * Standardized Web Serial API interface with immediate lock release
  */
 
+import type { SerialPort } from "../types/robot-connection.js";
+
 /**
  * Web Serial Port wrapper - direct write/read with immediate lock release
  */
