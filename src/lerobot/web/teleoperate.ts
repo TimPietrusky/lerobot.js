@@ -20,6 +20,13 @@ import type {
   TeleoperationProcess,
 } from "./types/teleoperation.js";
 
+// Re-export types for external use
+export type {
+  MotorConfig,
+  TeleoperationState,
+  TeleoperationProcess,
+} from "./types/teleoperation.js";
+
 /**
  * Create motor configurations from robot hardware config
  * Pure function - converts robot specs to motor configs with defaults

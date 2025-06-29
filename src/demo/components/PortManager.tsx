@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "./ui/button";
 import {
   Card,
@@ -165,25 +165,6 @@ export function PortManager({
             );
             await port.open({ baudRate: 1000000 });
             isConnected = true;
-
-            // Register with singleton connection manager
-            try {
-              const { getRobotConnectionManager } = await import(
-                "../../lerobot/web/robot-connection"
-              );
-              const connectionManager = getRobotConnectionManager();
-              await connectionManager.connect(
-                port,
-                robotType,
-                robotId,
-                serialNumber!
-              );
-            } catch (error) {
-              console.warn(
-                "Failed to register with connection manager:",
-                error
-              );
-            }
           } else {
             console.log(
               "Port found but no saved robot configuration, skipping auto-connect"
@@ -338,27 +319,6 @@ export function PortManager({
 
         onConnectedRobotsChange([...connectedRobots, newRobot]);
         console.log("🤖 New robot connected with ID:", serialNumber);
-
-        // Register with singleton connection manager if robot is configured
-        if (newRobot.robotType && newRobot.robotId) {
-          try {
-            const { getRobotConnectionManager } = await import(
-              "../../lerobot/web/robot-connection"
-            );
-            const connectionManager = getRobotConnectionManager();
-            await connectionManager.connect(
-              port,
-              newRobot.robotType,
-              newRobot.robotId,
-              serialNumber!
-            );
-          } catch (error) {
-            console.warn(
-              "Failed to register new connection with manager:",
-              error
-            );
-          }
-        }
       } else {
         // Existing robot - update port and connection status
         const updatedRobots = connectedRobots.map((robot, index) =>

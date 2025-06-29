@@ -37,8 +37,6 @@ import type {
 } from "./types/robot-connection.js";
 import type {
   Serial,
-  SerialPortRequestOptions,
-  SerialPortFilter,
   FindPortOptions,
   FindPortProcess,
 } from "./types/port-discovery.js";

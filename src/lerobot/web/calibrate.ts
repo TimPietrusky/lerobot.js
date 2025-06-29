@@ -23,6 +23,13 @@ import type {
   CalibrationProcess,
 } from "./types/calibration.js";
 
+// Re-export types for external use
+export type {
+  WebCalibrationResults,
+  LiveCalibrationData,
+  CalibrationProcess,
+} from "./types/calibration.js";
+
 /**
  * Record ranges of motion with live updates
  */

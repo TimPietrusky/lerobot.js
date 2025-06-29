@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Alert, AlertDescription } from "./ui/alert";
-import { Progress } from "./ui/progress";
 import {
   teleoperate,
   type TeleoperationProcess,
@@ -30,7 +29,7 @@ export function TeleoperationPanel({
       keyStates: {},
     });
   const [error, setError] = useState<string | null>(null);
-  const [isInitialized, setIsInitialized] = useState(false);
+  const [, setIsInitialized] = useState(false);
 
   const teleoperationProcessRef = useRef<TeleoperationProcess | null>(null);
 

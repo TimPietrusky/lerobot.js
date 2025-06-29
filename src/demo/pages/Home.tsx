@@ -1,12 +1,5 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Button } from "../components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "../components/ui/card";
 import { Alert, AlertDescription } from "../components/ui/alert";
 import { PortManager } from "../components/PortManager";
 import { CalibrationPanel } from "../components/CalibrationPanel";
@@ -15,27 +8,18 @@ import { isWebSerialSupported } from "../../lerobot/web/calibrate";
 import type { RobotConnection } from "../../lerobot/web/types/robot-connection.js";
 
 interface HomeProps {
-  onGetStarted: () => void;
   connectedRobots: RobotConnection[];
   onConnectedRobotsChange: (robots: RobotConnection[]) => void;
 }
 
-export function Home({
-  onGetStarted,
-  connectedRobots,
-  onConnectedRobotsChange,
-}: HomeProps) {
+export function Home({ connectedRobots, onConnectedRobotsChange }: HomeProps) {
   const [calibratingRobot, setCalibratingRobot] =
     useState<RobotConnection | null>(null);
   const [teleoperatingRobot, setTeleoperatingRobot] =
     useState<RobotConnection | null>(null);
   const isSupported = isWebSerialSupported();
 
-  const handleCalibrate = (
-    port: SerialPort,
-    robotType: "so100_follower" | "so100_leader",
-    robotId: string
-  ) => {
+  const handleCalibrate = (port: SerialPort) => {
     // Find the robot from connectedRobots
     const robot = connectedRobots.find((r) => r.port === port);
     if (robot) {

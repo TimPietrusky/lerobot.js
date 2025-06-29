@@ -4,8 +4,8 @@ emoji: 🤖
 colorFrom: blue
 colorTo: green
 sdk: static
-app_build_command: npm run build:demo
-app_file: dist/index.html
+app_build_command: npx vite build --mode demo
+app_file: dist/demo/index.html
 pinned: true
 ---
 
