@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@lerobot/web':
+        specifier: ^0.1.1
+        version: 0.1.1(typescript@5.8.3)
       '@radix-ui/react-dialog':
         specifier: ^1.1.14
         version: 1.1.14(@types/react-dom@18.3.7(@types/react@18.3.23))(@types/react@18.3.23)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -398,6 +401,11 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.25':
     resolution: {integrity: sha512-vNk6aEwybGtawWmy/PzwnGDOjCkLWSD2wqvjGGAgOAwCGWySYXfYoxt00IJkTF+8Lb57DwOb3Aa0o9CApepiYQ==}
+
+  '@lerobot/web@0.1.1':
+    resolution: {integrity: sha512-8xLGBTIQQetJzqauM9OtiSUIaSLphCH2qAqiGVzszmJk7pAcucqouezcIGRHiDOVRFDfpAYerRyfoeFLdoKqDQ==}
+    peerDependencies:
+      typescript: '>=4.5.0'
 
   '@manypkg/find-root@1.1.0':
     resolution: {integrity: sha512-mki5uBvhHzO8kYYix/WRy2WX8S3B5wdVSc9D6KcU5lQNglP2yt58/VfLuAK49glRXChosY8ap2oJ1qgma3GUVA==}
@@ -2076,6 +2084,10 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.0
+
+  '@lerobot/web@0.1.1(typescript@5.8.3)':
+    dependencies:
+      typescript: 5.8.3
 
   '@manypkg/find-root@1.1.0':
     dependencies:

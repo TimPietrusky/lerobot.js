@@ -1,6 +1,9 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: ["./index.html", "./src/demo/**/*.{js,ts,jsx,tsx}"],
+  content: [
+    "./index.html",
+    "./examples/robot-control-web/**/*.{js,ts,jsx,tsx}",
+  ],
   theme: {
     extend: {
       borderRadius: {

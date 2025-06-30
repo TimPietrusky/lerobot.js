@@ -20,7 +20,7 @@ pnpm --filter "@lerobot/web" run build
 ## 📦 Package Structure
 
 - **`packages/web/`** - Browser package (`@lerobot/web` on npm)
-- **`src/demo/`** - Demo application (deployed to HF Spaces)
+- **`examples/robot-control-web/`** - Demo application (deployed to HF Spaces)
 - **`src/cli/`** - Node.js CLI tool
 - **`src/lerobot/node/`** - Node.js library
 
