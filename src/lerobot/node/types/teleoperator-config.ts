@@ -1,6 +1,5 @@
 /**
- * Teleoperator configuration types
- * Shared between Node.js and Web implementations
+ * Teleoperator configuration types for Node.js implementation
  */
 
 export interface TeleoperatorConfig {

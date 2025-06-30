@@ -7,8 +7,8 @@
 import { SerialPort } from "serialport";
 import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";
-import type { TeleoperatorConfig } from "./config.js";
-import { getCalibrationDir, TELEOPERATORS } from "../constants.js";
+import type { TeleoperatorConfig } from "../types/teleoperator-config.js";
+import { getCalibrationDir, TELEOPERATORS } from "../utils/constants.js";
 
 export abstract class Teleoperator {
   protected port: SerialPort | null = null;

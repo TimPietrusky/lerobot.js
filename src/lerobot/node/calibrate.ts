@@ -1,15 +1,12 @@
 /**
  * Helper to recalibrate your device (robot or teleoperator).
  *
- * Direct port of Python lerobot calibrate.py
- *
  * Example:
  * ```
  * npx lerobot calibrate --robot.type=so100_follower --robot.port=COM4 --robot.id=my_follower_arm
  * ```
  */
 
-import type { CalibrateConfig } from "./robots/config.js";
 import { createSO100Follower } from "./robots/so100_follower.js";
 import { createSO100Leader } from "./teleoperators/so100_leader.js";
 import {
@@ -18,8 +15,9 @@ import {
   performInteractiveCalibration,
   setMotorLimits,
   verifyCalibration,
-  type CalibrationResults,
 } from "./common/calibration.js";
+import type { CalibrateConfig } from "./types/robot-config.js";
+import type { CalibrationResults } from "./types/calibration.js";
 import { getSO100Config } from "./common/so100_config.js";
 
 /**
