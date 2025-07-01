@@ -3,14 +3,7 @@
  * Tests: findPort → calibrate → releaseMotors → teleoperate
  */
 
-import {
-  findPort,
-  calibrate,
-  releaseMotors,
-  teleoperate,
-  WebSerialPortWrapper,
-  createSO100Config,
-} from "@lerobot/web";
+import { findPort, calibrate, releaseMotors, teleoperate } from "@lerobot/web";
 
 let isRunning = false;
 
@@ -68,21 +61,15 @@ window.runSequentialTest = async function () {
     log(`✅ Found robot: ${robot.name} (${robot.robotType})`);
     log(`   Serial: ${robot.serialNumber}`);
 
-    // Step 2: Release motors first, then calibrate
+    // Step 2: Release motors first for calibration setup
     log("\n2️⃣ Releasing motors for calibration setup...");
 
     if (!robot.robotType) {
       throw new Error("Robot type not configured");
     }
 
-    // Release motors so you can move the arm during calibration
-    log("🔧 Creating port and config for motor release...");
-    const setupPort = new WebSerialPortWrapper(robot.port);
-    await setupPort.initialize();
-    const setupConfig = createSO100Config(robot.robotType);
-
-    log(`🔓 Releasing ${setupConfig.motorIds.length} motors...`);
-    await releaseMotors(setupPort, setupConfig.motorIds);
+    log("🔓 Releasing all motors...");
+    await releaseMotors(robot);
     log("✅ Motors released - you can now move the arm freely!");
 
     // Now start calibration
@@ -275,12 +262,6 @@ window.runSequentialTest = async function () {
       log("⏱️ Auto-stopping teleoperation for test...");
       teleoperationProcess.stop();
       log("\n🎉 All sequential operations completed successfully!");
-      log(
-        "\n📝 RESULT: The current approach works but is too complex for users!"
-      );
-      log(
-        "📝 Users shouldn't need WebSerialPortWrapper and createSO100Config!"
-      );
       setButtonState(false);
     }, 8000);
   } catch (error: any) {

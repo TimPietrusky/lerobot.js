@@ -9,6 +9,7 @@
 export { calibrate } from "./calibrate.js";
 export { teleoperate } from "./teleoperate.js";
 export { findPort } from "./find_port.js";
+export { releaseMotors } from "./release_motors.js";
 
 // Browser support utilities
 export {
@@ -48,4 +49,3 @@ export {
   createSO100Config,
   SO100_KEYBOARD_CONTROLS,
 } from "./robots/so100_config.js";
-export { releaseMotors } from "./utils/motor-communication.js";
