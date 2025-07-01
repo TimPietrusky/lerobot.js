@@ -10,13 +10,13 @@ import {
 import { Badge } from "./ui/badge.js";
 import {
   calibrate,
+  releaseMotors,
+  WebSerialPortWrapper,
+  createSO100Config,
   type WebCalibrationResults,
   type LiveCalibrationData,
   type CalibrationProcess,
 } from "@lerobot/web";
-import { releaseMotors } from "@lerobot/web";
-import { WebSerialPortWrapper } from "@lerobot/web";
-import { createSO100Config } from "@lerobot/web";
 import { CalibrationModal } from "./CalibrationModal.js";
 import type { RobotConnection } from "@lerobot/web";
 
@@ -64,22 +64,21 @@ export function CalibrationPanel({ robot, onFinish }: CalibrationPanelProps) {
     setMotorData(initialData);
   }, [motorNames]);
 
-  // Release motor torque for better UX - allows immediate joint movement
+  // ✅ Release motor torque
   const releaseMotorTorque = useCallback(async () => {
-    if (!robot.port || !robot.robotType) {
-      return;
-    }
-
     try {
       setIsPreparing(true);
       setStatus("🔓 Releasing motor torque - joints can now be moved freely");
 
-      // Create port wrapper and config to get motor IDs
+      if (!robot.robotType) {
+        throw new Error("Robot type not configured");
+      }
+
+      // Create port and get motor config
       const port = new WebSerialPortWrapper(robot.port);
       await port.initialize();
-      const config = createSO100Config(robot.robotType);
 
-      // Release motors so they can be moved freely by hand
+      const config = createSO100Config(robot.robotType);
       await releaseMotors(port, config.motorIds);
 
       setStatus("✅ Joints are now free to move - set your homing position");
@@ -265,7 +264,7 @@ export function CalibrationPanel({ robot, onFinish }: CalibrationPanelProps) {
               {!isCalibrating && !calibrationResult && (
                 <Button
                   onClick={async () => {
-                    // Release motor torque FIRST - so user can move joints immediately
+                    // ✅ Release motor torque FIRST - so user can move joints immediately
                     await releaseMotorTorque();
                     // THEN open modal - user can now follow instructions right away
                     setModalOpen(true);

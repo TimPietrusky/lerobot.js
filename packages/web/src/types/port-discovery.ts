@@ -27,6 +27,36 @@ export interface SerialPortFilter {
 }
 
 /**
+ * WebUSB API type definitions
+ */
+export interface USBDevice {
+  vendorId: number;
+  productId: number;
+  serialNumber?: string;
+  manufacturerName?: string;
+  productName?: string;
+  usbVersionMajor: number;
+  usbVersionMinor: number;
+  deviceClass: number;
+  deviceSubclass: number;
+  deviceProtocol: number;
+}
+
+export interface USBDeviceFilter {
+  vendorId?: number;
+  productId?: number;
+}
+
+export interface USBDeviceRequestOptions {
+  filters: USBDeviceFilter[];
+}
+
+export interface USB {
+  getDevices(): Promise<USBDevice[]>;
+  requestDevice(options: USBDeviceRequestOptions): Promise<USBDevice>;
+}
+
+/**
  * Options for findPort function
  */
 export interface FindPortOptions {

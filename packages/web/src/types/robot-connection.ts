@@ -3,6 +3,8 @@
  * These types are shared between findPort, calibrate, teleoperate, and other modules
  */
 
+import type { RobotHardwareConfig } from "./robot-config.js";
+
 /**
  * Type definitions for WebSerial API (not yet in all TypeScript libs)
  */
@@ -39,6 +41,7 @@ export interface RobotConnection {
   robotId?: string; // Optional until user configures
   serialNumber: string; // Always required for identification
   error?: string; // Error message if connection failed
+  config?: RobotHardwareConfig; // Robot configuration (motorIds, controls, etc.) - set when robotType is configured
   usbMetadata?: {
     // USB device information
     vendorId: string;

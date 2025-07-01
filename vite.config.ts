@@ -54,6 +54,27 @@ export default defineConfig(({ mode }) => {
     };
   }
 
+  if (mode === "test") {
+    // Test mode - sequential operations test
+    return {
+      ...baseConfig,
+      server: {
+        open: "/examples/test-sequential-operations.html",
+      },
+      build: {
+        outDir: "dist/test",
+        rollupOptions: {
+          input: {
+            main: resolve(
+              __dirname,
+              "examples/test-sequential-operations.html"
+            ),
+          },
+        },
+      },
+    };
+  }
+
   if (mode === "lib") {
     // Library mode - core library without any demo UI
     return {

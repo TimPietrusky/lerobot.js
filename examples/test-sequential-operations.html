@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sequential Operations Test - LeRobot.js</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 800px;
+        margin: 2rem auto;
+        padding: 2rem;
+        background: #f5f5f5;
+      }
+
+      .container {
+        background: white;
+        padding: 2rem;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      }
+
+      button {
+        background: #2563eb;
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 6px;
+        font-size: 16px;
+        cursor: pointer;
+        margin: 8px;
+      }
+
+      button:hover {
+        background: #1d4ed8;
+      }
+
+      button:disabled {
+        background: #9ca3af;
+        cursor: not-allowed;
+      }
+
+      .log {
+        background: #1f2937;
+        color: #f9fafb;
+        padding: 1rem;
+        border-radius: 6px;
+        font-family: "Courier New", monospace;
+        font-size: 14px;
+        max-height: 400px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        margin-top: 1rem;
+      }
+
+      .warning {
+        background: #fef3c7;
+        border: 1px solid #f59e0b;
+        color: #92400e;
+        padding: 1rem;
+        border-radius: 6px;
+        margin: 1rem 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🧪 Sequential Operations Test</h1>
+      <p>
+        This test checks if calling <code>findPort</code> →
+        <code>calibrate</code> → <code>releaseMotors</code> →
+        <code>teleoperate</code> works without connection conflicts.
+      </p>
+
+      <div class="warning">
+        <strong>⚠️ Note:</strong> This test requires a robot to be connected.
+        Make sure your SO-100 robot is plugged in via USB.
+      </div>
+
+      <button id="runTest" onclick="runSequentialTest()">
+        🚀 Run Sequential Operations Test
+      </button>
+
+      <button id="clearLog" onclick="clearLog()">🗑️ Clear Log</button>
+
+      <div id="log" class="log"></div>
+    </div>
+
+    <script type="module" src="./test-sequential-operations.ts"></script>
+  </body>
+</html>

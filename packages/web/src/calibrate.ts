@@ -218,10 +218,3 @@ export async function calibrate(
     result: resultPromise,
   };
 }
-
-/**
- * Check if Web Serial API is supported
- */
-export function isWebSerialSupported(): boolean {
-  return "serial" in navigator;
-}

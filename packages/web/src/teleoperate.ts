@@ -92,7 +92,7 @@ export class WebTeleoperationController {
   // Movement parameters
   private readonly STEP_SIZE = 8;
   private readonly UPDATE_RATE = 60; // 60 FPS
-  private readonly KEY_TIMEOUT = 600; // ms - longer than browser keyboard repeat delay (~500ms)
+  private readonly KEY_TIMEOUT = 10000; // ms - very long timeout (10 seconds) for virtual buttons
 
   constructor(
     port: MotorCommunicationPort,

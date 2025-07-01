@@ -6,11 +6,15 @@
  */
 
 // Core functions
-export { calibrate, isWebSerialSupported } from "./calibrate.js";
+export { calibrate } from "./calibrate.js";
 export { teleoperate } from "./teleoperate.js";
 export { findPort } from "./find_port.js";
 
-console.log("asdfasdfasdfasdf");
+// Browser support utilities
+export {
+  isWebSerialSupported,
+  isWebUSBSupported,
+} from "./utils/browser-support.js";
 
 // Types
 export type {

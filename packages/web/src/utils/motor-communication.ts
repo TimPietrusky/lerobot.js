@@ -247,22 +247,6 @@ export async function releaseMotor(
 }
 
 /**
- * Release motors (motors can be moved freely - perfect for calibration)
- */
-export async function releaseMotors(
-  port: MotorCommunicationPort,
-  motorIds: number[]
-): Promise<void> {
-  for (const motorId of motorIds) {
-    await releaseMotor(port, motorId);
-    // Small delay between motors
-    await new Promise((resolve) =>
-      setTimeout(resolve, STS3215_PROTOCOL.INTER_MOTOR_DELAY)
-    );
-  }
-}
-
-/**
  * Lock motors (motors will hold their positions - perfect after calibration)
  */
 export async function lockMotors(
@@ -271,6 +255,22 @@ export async function lockMotors(
 ): Promise<void> {
   for (const motorId of motorIds) {
     await lockMotor(port, motorId);
+    // Small delay between motors
+    await new Promise((resolve) =>
+      setTimeout(resolve, STS3215_PROTOCOL.INTER_MOTOR_DELAY)
+    );
+  }
+}
+
+/**
+ * Release motors (motors can be moved freely - perfect for calibration)
+ */
+export async function releaseMotors(
+  port: MotorCommunicationPort,
+  motorIds: number[]
+): Promise<void> {
+  for (const motorId of motorIds) {
+    await releaseMotor(port, motorId);
     // Small delay between motors
     await new Promise((resolve) =>
       setTimeout(resolve, STS3215_PROTOCOL.INTER_MOTOR_DELAY)

@@ -208,6 +208,41 @@ export function TeleoperationPanel({
           keyCode as keyof typeof SO100_KEYBOARD_CONTROLS
         ];
       const pressed = isKeyPressed(keyCode);
+      const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+      const startContinuousPress = () => {
+        if (!isActive || !teleoperationProcessRef.current) return;
+
+        // Initial press
+        simulateKeyPress(keyCode);
+
+        // Set up continuous updates to maintain key state
+        // Update every 50ms to stay well within the 10 second timeout
+        intervalRef.current = setInterval(() => {
+          if (teleoperationProcessRef.current) {
+            simulateKeyPress(keyCode);
+          }
+        }, 50);
+      };
+
+      const stopContinuousPress = () => {
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+        if (isActive) {
+          simulateKeyRelease(keyCode);
+        }
+      };
+
+      // Cleanup interval on unmount
+      useEffect(() => {
+        return () => {
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+          }
+        };
+      }, []);
 
       return (
         <Button
@@ -226,15 +261,15 @@ export function TeleoperationPanel({
           disabled={!isActive}
           onMouseDown={(e) => {
             e.preventDefault();
-            if (isActive) simulateKeyPress(keyCode);
+            startContinuousPress();
           }}
           onMouseUp={(e) => {
             e.preventDefault();
-            if (isActive) simulateKeyRelease(keyCode);
+            stopContinuousPress();
           }}
           onMouseLeave={(e) => {
             e.preventDefault();
-            if (isActive) simulateKeyRelease(keyCode);
+            stopContinuousPress();
           }}
           title={control?.description || keyCode}
         >

@@ -1,6 +1,7 @@
 /**
- * Browser implementation of find_port using WebSerial API
- * Clean API with native dialogs and auto-connect modes
+ * Browser implementation of find_port using WebSerial + WebUSB APIs
+ * WebSerial: Communication with device
+ * WebUSB: Device identification and serial numbers
  *
  * Usage Examples:
  *
@@ -30,6 +31,10 @@
 
 import { WebSerialPortWrapper } from "./utils/serial-port-wrapper.js";
 import { readMotorPosition } from "./utils/motor-communication.js";
+import {
+  isWebSerialSupported,
+  isWebUSBSupported,
+} from "./utils/browser-support.js";
 import type {
   RobotConnection,
   RobotConfig,
@@ -39,20 +44,8 @@ import type {
   Serial,
   FindPortOptions,
   FindPortProcess,
+  USBDevice,
 } from "./types/port-discovery.js";
-
-declare global {
-  interface Navigator {
-    serial: Serial;
-  }
-}
-
-/**
- * Check if WebSerial API is available
- */
-function isWebSerialSupported(): boolean {
-  return "serial" in navigator;
-}
 
 /**
  * Get display name for a port
@@ -66,7 +59,116 @@ function getPortDisplayName(port: SerialPort): string {
 }
 
 /**
- * Interactive mode: Show native dialog for port selection
+ * Request USB device for metadata and serial number extraction
+ */
+async function requestUSBDeviceMetadata(): Promise<{
+  serialNumber: string;
+  usbMetadata: RobotConnection["usbMetadata"];
+}> {
+  try {
+    // Request USB device access for metadata (no filters - accept any device)
+    const usbDevice = await navigator.usb.requestDevice({
+      filters: [], // No filtering - let user choose any device
+    });
+
+    const serialNumber =
+      usbDevice.serialNumber ||
+      `${usbDevice.vendorId}-${usbDevice.productId}-${Date.now()}`;
+
+    const usbMetadata = {
+      vendorId: `0x${usbDevice.vendorId.toString(16).padStart(4, "0")}`,
+      productId: `0x${usbDevice.productId.toString(16).padStart(4, "0")}`,
+      serialNumber: usbDevice.serialNumber || "Generated ID",
+      manufacturerName: usbDevice.manufacturerName || "Unknown",
+      productName: usbDevice.productName || "Unknown",
+      usbVersionMajor: usbDevice.usbVersionMajor,
+      usbVersionMinor: usbDevice.usbVersionMinor,
+      deviceClass: usbDevice.deviceClass,
+      deviceSubclass: usbDevice.deviceSubclass,
+      deviceProtocol: usbDevice.deviceProtocol,
+    };
+
+    return { serialNumber, usbMetadata };
+  } catch (usbError) {
+    console.log("⚠️ WebUSB request failed, generating fallback ID:", usbError);
+    // Generate a fallback unique ID if WebUSB fails
+    const serialNumber = `fallback-${Date.now()}-${Math.random()
+      .toString(36)
+      .substr(2, 9)}`;
+
+    const usbMetadata = {
+      vendorId: "Unknown",
+      productId: "Unknown",
+      serialNumber: serialNumber,
+      manufacturerName: "WebUSB Not Available",
+      productName: "Check browser WebUSB support",
+    };
+
+    return { serialNumber, usbMetadata };
+  }
+}
+
+/**
+ * Get USB device metadata for already permitted devices
+ */
+async function getStoredUSBDeviceMetadata(port: SerialPort): Promise<{
+  serialNumber: string;
+  usbMetadata?: RobotConnection["usbMetadata"];
+}> {
+  try {
+    if (!isWebUSBSupported()) {
+      throw new Error("WebUSB not supported");
+    }
+
+    // Get already permitted USB devices
+    const usbDevices = await navigator.usb.getDevices();
+    const portInfo = port.getInfo();
+
+    // Try to find matching USB device by vendor/product ID
+    const matchingDevice = usbDevices.find(
+      (device) =>
+        device.vendorId === portInfo.usbVendorId &&
+        device.productId === portInfo.usbProductId
+    );
+
+    if (matchingDevice) {
+      const serialNumber =
+        matchingDevice.serialNumber ||
+        `${matchingDevice.vendorId}-${matchingDevice.productId}-${Date.now()}`;
+
+      const usbMetadata = {
+        vendorId: `0x${matchingDevice.vendorId.toString(16).padStart(4, "0")}`,
+        productId: `0x${matchingDevice.productId
+          .toString(16)
+          .padStart(4, "0")}`,
+        serialNumber: matchingDevice.serialNumber || "Generated ID",
+        manufacturerName: matchingDevice.manufacturerName || "Unknown",
+        productName: matchingDevice.productName || "Unknown",
+        usbVersionMajor: matchingDevice.usbVersionMajor,
+        usbVersionMinor: matchingDevice.usbVersionMinor,
+        deviceClass: matchingDevice.deviceClass,
+        deviceSubclass: matchingDevice.deviceSubclass,
+        deviceProtocol: matchingDevice.deviceProtocol,
+      };
+
+      console.log("✅ Restored USB metadata for port:", serialNumber);
+      return { serialNumber, usbMetadata };
+    }
+
+    throw new Error("No matching USB device found");
+  } catch (usbError) {
+    console.log("⚠️ Could not restore USB metadata:", usbError);
+    // Generate fallback if no USB metadata available
+    const serialNumber = `fallback-${Date.now()}-${Math.random()
+      .toString(36)
+      .substr(2, 9)}`;
+
+    return { serialNumber };
+  }
+}
+
+/**
+ * Interactive mode: Show native dialogs for port + device selection
  */
 async function findPortInteractive(
   options: FindPortOptions
@@ -76,17 +178,37 @@ async function findPortInteractive(
   onMessage?.("Opening port selection dialog...");
 
   try {
-    // Use native browser dialog - much better UX than port diffing!
+    // Step 1: Request Web Serial port
     const port = await navigator.serial.requestPort();
-
-    // Open the port
     await port.open({ baudRate: 1000000 });
 
     const portName = getPortDisplayName(port);
     onMessage?.(`✅ Connected to ${portName}`);
 
+    // Step 2: Request WebUSB device for metadata (if supported)
+    let serialNumber: string;
+    let usbMetadata: RobotConnection["usbMetadata"];
+
+    if (isWebUSBSupported()) {
+      onMessage?.("📱 Requesting device identification...");
+      const usbData = await requestUSBDeviceMetadata();
+      serialNumber = usbData.serialNumber;
+      usbMetadata = usbData.usbMetadata;
+      onMessage?.(`🆔 Device ID: ${serialNumber}`);
+    } else {
+      onMessage?.("⚠️ WebUSB not supported, using fallback ID");
+      const fallbackId = `no-usb-${Date.now()}`;
+      serialNumber = fallbackId;
+      usbMetadata = {
+        vendorId: "Unknown",
+        productId: "Unknown",
+        serialNumber: fallbackId,
+        manufacturerName: "WebUSB Not Supported",
+        productName: "Browser limitation",
+      };
+    }
+
     // Return unified RobotConnection object in array (consistent API)
-    // In interactive mode, user will need to specify robot details separately
     return [
       {
         port,
@@ -94,7 +216,8 @@ async function findPortInteractive(
         isConnected: true,
         robotType: "so100_follower", // Default, user can change
         robotId: "interactive_robot",
-        serialNumber: `interactive_${Date.now()}`,
+        serialNumber,
+        usbMetadata,
       },
     ];
   } catch (error) {
@@ -127,19 +250,26 @@ async function findPortAutoConnect(
   const availablePorts = await navigator.serial.getPorts();
   onMessage?.(`Found ${availablePorts.length} available port(s)`);
 
-  for (const config of robotConfigs) {
-    onMessage?.(`Connecting to ${config.robotId} (${config.serialNumber})...`);
-
-    let connected = false;
-    let matchedPort: SerialPort | null = null;
-    let error: string | undefined;
-
+  // For each available port, try to restore USB metadata and match with configs
+  for (const port of availablePorts) {
     try {
-      // For now, we'll try each available port and see if we can connect
-      // In a future enhancement, we could match by actual serial number reading
-      for (const port of availablePorts) {
+      // Get USB device metadata for this port
+      const { serialNumber, usbMetadata } = await getStoredUSBDeviceMetadata(
+        port
+      );
+
+      // Find matching robot config by serial number
+      const matchingConfig = robotConfigs.find(
+        (config) => config.serialNumber === serialNumber
+      );
+
+      if (matchingConfig) {
+        onMessage?.(
+          `Connecting to ${matchingConfig.robotId} (${serialNumber})...`
+        );
+
         try {
-          // Try to open and use this port
+          // Try to open the port
           const wasOpen = port.readable !== null;
           if (!wasOpen) {
             await port.open({ baudRate: 1000000 });
@@ -154,42 +284,72 @@ async function findPortAutoConnect(
 
           // If we can read a position, this is likely a working robot port
           if (testPosition !== null) {
-            matchedPort = port;
-            connected = true;
-            onMessage?.(`✅ Connected to ${config.robotId}`);
-            break;
+            onMessage?.(`✅ Connected to ${matchingConfig.robotId}`);
+
+            results.push({
+              port,
+              name: getPortDisplayName(port),
+              isConnected: true,
+              robotType: matchingConfig.robotType,
+              robotId: matchingConfig.robotId,
+              serialNumber,
+              usbMetadata,
+            });
           } else {
             throw new Error("No motor response - not a robot port");
           }
-        } catch (portError) {
-          // This port didn't work, try next one
-          console.log(
-            `Port ${getPortDisplayName(port)} didn't match ${config.robotId}:`,
-            portError
+        } catch (connectionError) {
+          onMessage?.(
+            `❌ Failed to connect to ${matchingConfig.robotId}: ${
+              connectionError instanceof Error
+                ? connectionError.message
+                : connectionError
+            }`
           );
-          continue;
+
+          results.push({
+            port,
+            name: getPortDisplayName(port),
+            isConnected: false,
+            robotType: matchingConfig.robotType,
+            robotId: matchingConfig.robotId,
+            serialNumber,
+            usbMetadata,
+            error:
+              connectionError instanceof Error
+                ? connectionError.message
+                : "Unknown error",
+          });
         }
+      } else {
+        console.log(
+          `Port with serial ${serialNumber} not in requested configs, skipping`
+        );
       }
-
-      if (!connected) {
-        error = `No matching port found for ${config.robotId} (${config.serialNumber})`;
-        onMessage?.(`❌ ${error}`);
-      }
-    } catch (err) {
-      error = err instanceof Error ? err.message : "Unknown error";
-      onMessage?.(`❌ Failed to connect to ${config.robotId}: ${error}`);
+    } catch (metadataError) {
+      console.log(`Failed to get metadata for port:`, metadataError);
+      // Skip this port if we can't get metadata
+      continue;
     }
+  }
 
-    // Add result (successful or failed)
-    results.push({
-      port: matchedPort!,
-      name: matchedPort ? getPortDisplayName(matchedPort) : "Unknown Port",
-      isConnected: connected,
-      robotType: config.robotType,
-      robotId: config.robotId,
-      serialNumber: config.serialNumber,
-      error,
-    });
+  // Handle robots that weren't found
+  for (const config of robotConfigs) {
+    const found = results.some((r) => r.serialNumber === config.serialNumber);
+    if (!found) {
+      onMessage?.(
+        `❌ Robot ${config.robotId} (${config.serialNumber}) not found`
+      );
+      results.push({
+        port: null as any, // Will not be used since isConnected = false
+        name: "Not Found",
+        isConnected: false,
+        robotType: config.robotType,
+        robotId: config.robotId,
+        serialNumber: config.serialNumber,
+        error: `Device with serial number ${config.serialNumber} not found`,
+      });
+    }
   }
 
   const successCount = results.filter((r) => r.isConnected).length;
