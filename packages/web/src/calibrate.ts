@@ -144,7 +144,7 @@ export async function calibrate(
   const port = new WebSerialPortWrapper(robotConnection.port);
   await port.initialize();
 
-  // Get robot-specific configuration (extensible - add new robot types here)
+  // Get robot-specific configuration
   let config: RobotHardwareConfig;
   if (robotConnection.robotType.startsWith("so100")) {
     config = createSO100Config(robotConnection.robotType);

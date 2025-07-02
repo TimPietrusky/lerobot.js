@@ -3,10 +3,7 @@
  */
 
 import { createSO100Config } from "./robots/so100_config.js";
-import type {
-  RobotHardwareConfig,
-  KeyboardControl,
-} from "./types/robot-config.js";
+import type { RobotHardwareConfig } from "./types/robot-config.js";
 import type { RobotConnection } from "./types/robot-connection.js";
 import { WebSerialPortWrapper } from "./utils/serial-port-wrapper.js";
 import {
@@ -18,18 +15,29 @@ import type {
   MotorConfig,
   TeleoperationState,
   TeleoperationProcess,
+  TeleoperateConfig,
+  TeleoperatorConfig,
+  DirectTeleoperatorConfig,
 } from "./types/teleoperation.js";
+import {
+  KeyboardTeleoperator,
+  DirectTeleoperator,
+  type WebTeleoperator,
+} from "./teleoperators/index.js";
 
 // Re-export types for external use
 export type {
   MotorConfig,
   TeleoperationState,
   TeleoperationProcess,
+  TeleoperateConfig,
+  TeleoperatorConfig,
+  DirectTeleoperatorConfig,
 } from "./types/teleoperation.js";
 
 /**
  * Create motor configurations from robot hardware config
- * Pure function - converts robot specs to motor configs with defaults
+ * Pure function - converts robot specs to motor configs
  */
 function createMotorConfigsFromRobotConfig(
   robotConfig: RobotHardwareConfig
@@ -75,283 +83,145 @@ export function applyCalibrationToMotorConfigs(
 }
 
 /**
- * Web teleoperation controller
- * Now uses shared utilities instead of custom port handling
+ * Create appropriate teleoperator based on configuration
  */
-export class WebTeleoperationController {
-  private port: MotorCommunicationPort;
-  private motorConfigs: MotorConfig[] = [];
-  private keyboardControls: { [key: string]: KeyboardControl } = {};
-  private isActive: boolean = false;
-  private updateInterval: NodeJS.Timeout | null = null;
-  private keyStates: {
-    [key: string]: { pressed: boolean; timestamp: number };
-  } = {};
-  private onStateUpdate?: (state: TeleoperationState) => void;
-
-  // Movement parameters
-  private readonly STEP_SIZE = 8;
-  private readonly UPDATE_RATE = 60; // 60 FPS
-  private readonly KEY_TIMEOUT = 10000; // ms - very long timeout (10 seconds) for virtual buttons
-
-  constructor(
-    port: MotorCommunicationPort,
-    motorConfigs: MotorConfig[],
-    keyboardControls: { [key: string]: KeyboardControl },
-    onStateUpdate?: (state: TeleoperationState) => void
-  ) {
-    this.port = port;
-    this.motorConfigs = motorConfigs;
-    this.keyboardControls = keyboardControls;
-    this.onStateUpdate = onStateUpdate;
-  }
-
-  async initialize(): Promise<void> {
-    // Read current motor positions
-    for (const config of this.motorConfigs) {
-      const position = await readMotorPosition(this.port, config.id);
-      if (position !== null) {
-        config.currentPosition = position;
-      }
-    }
-  }
-
-  getMotorConfigs(): MotorConfig[] {
-    return [...this.motorConfigs];
-  }
-
-  getState(): TeleoperationState {
-    return {
-      isActive: this.isActive,
-      motorConfigs: [...this.motorConfigs],
-      lastUpdate: Date.now(),
-      keyStates: { ...this.keyStates },
-    };
-  }
-
-  updateKeyState(key: string, pressed: boolean): void {
-    this.keyStates[key] = {
-      pressed,
-      timestamp: Date.now(),
-    };
-  }
-
-  start(): void {
-    if (this.isActive) return;
-
-    this.isActive = true;
-    this.updateInterval = setInterval(() => {
-      this.updateMotorPositions();
-    }, 1000 / this.UPDATE_RATE);
-
-    console.log("🎮 Web teleoperation started");
-  }
-
-  stop(): void {
-    if (!this.isActive) return;
-
-    this.isActive = false;
-
-    if (this.updateInterval) {
-      clearInterval(this.updateInterval);
-      this.updateInterval = null;
-    }
-
-    // Clear all key states
-    this.keyStates = {};
-
-    console.log("⏹️ Web teleoperation stopped");
-
-    // Notify UI of state change
-    if (this.onStateUpdate) {
-      this.onStateUpdate(this.getState());
-    }
-  }
-
-  async disconnect(): Promise<void> {
-    this.stop();
-    // No need to manually disconnect - port wrapper handles this
-  }
-
-  private updateMotorPositions(): void {
-    const now = Date.now();
-
-    // Clear timed-out keys
-    Object.keys(this.keyStates).forEach((key) => {
-      if (now - this.keyStates[key].timestamp > this.KEY_TIMEOUT) {
-        delete this.keyStates[key];
-      }
-    });
-
-    // Process active keys
-    const activeKeys = Object.keys(this.keyStates).filter(
-      (key) =>
-        this.keyStates[key].pressed &&
-        now - this.keyStates[key].timestamp <= this.KEY_TIMEOUT
-    );
-
-    // Emergency stop check
-    if (activeKeys.includes("Escape")) {
-      this.stop();
-      return;
-    }
-
-    // Calculate target positions based on active keys
-    const targetPositions: { [motorName: string]: number } = {};
-
-    for (const key of activeKeys) {
-      const control = this.keyboardControls[key];
-      if (!control || control.motor === "emergency_stop") continue;
-
-      const motorConfig = this.motorConfigs.find(
-        (m) => m.name === control.motor
+async function createTeleoperator(
+  config: TeleoperateConfig,
+  port: MotorCommunicationPort,
+  motorConfigs: MotorConfig[],
+  robotHardwareConfig: RobotHardwareConfig
+): Promise<WebTeleoperator> {
+  switch (config.teleop.type) {
+    case "keyboard":
+      return new KeyboardTeleoperator(
+        config.teleop,
+        port,
+        motorConfigs,
+        robotHardwareConfig.keyboardControls,
+        config.onStateUpdate
       );
-      if (!motorConfig) continue;
 
-      // Calculate new position
-      const currentTarget =
-        targetPositions[motorConfig.name] ?? motorConfig.currentPosition;
-      const newPosition = currentTarget + control.direction * this.STEP_SIZE;
-
-      // Apply limits
-      targetPositions[motorConfig.name] = Math.max(
-        motorConfig.minPosition,
-        Math.min(motorConfig.maxPosition, newPosition)
+    case "direct":
+      return new DirectTeleoperator(
+        config.teleop,
+        port,
+        motorConfigs,
+        config.onStateUpdate
       );
-    }
 
-    // Send motor commands
-    Object.entries(targetPositions).forEach(([motorName, targetPosition]) => {
-      const motorConfig = this.motorConfigs.find((m) => m.name === motorName);
-      if (motorConfig && targetPosition !== motorConfig.currentPosition) {
-        writeMotorPosition(
-          this.port,
-          motorConfig.id,
-          Math.round(targetPosition)
-        )
-          .then(() => {
-            motorConfig.currentPosition = targetPosition;
-          })
-          .catch((error) => {
-            console.warn(
-              `Failed to write motor ${motorConfig.id} position:`,
-              error
-            );
-          });
-      }
-    });
-  }
+    case "so100_leader":
+      throw new Error("Leader arm teleoperator not yet implemented");
 
-  // Programmatic control methods
-  async moveMotor(motorName: string, targetPosition: number): Promise<boolean> {
-    const motorConfig = this.motorConfigs.find((m) => m.name === motorName);
-    if (!motorConfig) return false;
+    case "gamepad":
+      throw new Error("Gamepad teleoperator not yet implemented");
 
-    const clampedPosition = Math.max(
-      motorConfig.minPosition,
-      Math.min(motorConfig.maxPosition, targetPosition)
-    );
-
-    try {
-      await writeMotorPosition(
-        this.port,
-        motorConfig.id,
-        Math.round(clampedPosition)
+    default:
+      throw new Error(
+        `Unsupported teleoperator type: ${(config.teleop as any).type}`
       );
-      motorConfig.currentPosition = clampedPosition;
-      return true;
-    } catch (error) {
-      console.warn(`Failed to move motor ${motorName}:`, error);
-      return false;
-    }
-  }
-
-  async setMotorPositions(positions: {
-    [motorName: string]: number;
-  }): Promise<boolean> {
-    const results = await Promise.all(
-      Object.entries(positions).map(([motorName, position]) =>
-        this.moveMotor(motorName, position)
-      )
-    );
-
-    return results.every((result) => result);
   }
 }
 
 /**
- * Main teleoperate function - simple API
- * Handles robot types internally, creates appropriate motor configurations
+ * Build TeleoperationState from teleoperator and motor configs
+ */
+function buildTeleoperationStateFromTeleoperator(
+  teleoperator: WebTeleoperator
+): TeleoperationState {
+  const teleoperatorState = teleoperator.getState();
+  const isActive = (teleoperator as any).isActive;
+
+  return {
+    isActive: isActive || false,
+    motorConfigs: [...teleoperator.motorConfigs], // Get fresh motor configs from teleoperator
+    lastUpdate: Date.now(),
+    ...teleoperatorState,
+  };
+}
+
+/**
+ * Main teleoperate function
  */
 export async function teleoperate(
-  robotConnection: RobotConnection,
-  options?: {
-    calibrationData?: { [motorName: string]: any };
-    onStateUpdate?: (state: TeleoperationState) => void;
-  }
+  config: TeleoperateConfig
 ): Promise<TeleoperationProcess> {
+  const teleoperator = await createTeleoperatorProcess(config);
+  const motorConfigs = teleoperator.motorConfigs;
+
+  return {
+    start: () => {
+      teleoperator.start();
+      // CRITICAL: State update loop for UI synchronization
+      // This ensures sliders and UI reflect actual motor positions when moved via keyboard
+      if (config.onStateUpdate) {
+        const updateLoop = () => {
+          const state = buildTeleoperationStateFromTeleoperator(teleoperator);
+          if (state.isActive) {
+            config.onStateUpdate!(state);
+            setTimeout(updateLoop, 100); // 10fps state updates - keeps sliders in sync
+          }
+        };
+        updateLoop();
+      }
+    },
+    stop: () => teleoperator.stop(),
+    updateKeyState: (key: string, pressed: boolean) => {
+      // Delegate to teleoperator if it supports keyboard input
+      if (teleoperator instanceof KeyboardTeleoperator) {
+        teleoperator.updateKeyState(key, pressed);
+      }
+    },
+    getState: () => buildTeleoperationStateFromTeleoperator(teleoperator),
+    teleoperator,
+    disconnect: () => teleoperator.disconnect(),
+  };
+}
+
+/**
+ * Create teleoperator instance (shared logic)
+ */
+async function createTeleoperatorProcess(
+  config: TeleoperateConfig
+): Promise<WebTeleoperator> {
   // Validate required fields
-  if (!robotConnection.robotType) {
+  if (!config.robot.robotType) {
     throw new Error(
       "Robot type is required for teleoperation. Please configure the robot first."
     );
   }
 
   // Create web serial port wrapper
-  const port = new WebSerialPortWrapper(robotConnection.port);
+  const port = new WebSerialPortWrapper(config.robot.port);
   await port.initialize();
 
   // Get robot-specific configuration
-  let config: RobotHardwareConfig;
-  if (robotConnection.robotType.startsWith("so100")) {
-    config = createSO100Config(robotConnection.robotType);
+  let robotHardwareConfig: RobotHardwareConfig;
+  if (config.robot.robotType.startsWith("so100")) {
+    robotHardwareConfig = createSO100Config(config.robot.robotType);
   } else {
-    throw new Error(`Unsupported robot type: ${robotConnection.robotType}`);
+    throw new Error(`Unsupported robot type: ${config.robot.robotType}`);
   }
 
-  // Create motor configs from robot hardware specs (single call, no duplication)
-  const defaultMotorConfigs = createMotorConfigsFromRobotConfig(config);
+  // Create motor configs from robot hardware specs
+  const defaultMotorConfigs =
+    createMotorConfigsFromRobotConfig(robotHardwareConfig);
 
   // Apply calibration data if provided
-  const motorConfigs = options?.calibrationData
+  const motorConfigs = config.calibrationData
     ? applyCalibrationToMotorConfigs(
         defaultMotorConfigs,
-        options.calibrationData
+        config.calibrationData
       )
     : defaultMotorConfigs;
 
-  // Create and initialize controller using shared utilities
-  const controller = new WebTeleoperationController(
+  // Create teleoperator
+  const teleoperator = await createTeleoperator(
+    config,
     port,
     motorConfigs,
-    config.keyboardControls,
-    options?.onStateUpdate
+    robotHardwareConfig
   );
-  await controller.initialize();
+  await teleoperator.initialize();
 
-  // Wrap controller in process object
-  return {
-    start: () => {
-      controller.start();
-      // Optional state update callback
-      if (options?.onStateUpdate) {
-        const updateLoop = () => {
-          if (controller.getState().isActive) {
-            options.onStateUpdate!(controller.getState());
-            setTimeout(updateLoop, 100); // 10fps state updates
-          }
-        };
-        updateLoop();
-      }
-    },
-    stop: () => controller.stop(),
-    updateKeyState: (key: string, pressed: boolean) =>
-      controller.updateKeyState(key, pressed),
-    getState: () => controller.getState(),
-    moveMotor: (motorName: string, position: number) =>
-      controller.moveMotor(motorName, position),
-    setMotorPositions: (positions: { [motorName: string]: number }) =>
-      controller.setMotorPositions(positions),
-    disconnect: () => controller.disconnect(),
-  };
+  return teleoperator;
 }

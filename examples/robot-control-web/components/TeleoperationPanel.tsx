@@ -7,6 +7,7 @@ import {
   teleoperate,
   type TeleoperationProcess,
   type TeleoperationState,
+  type TeleoperateConfig,
 } from "@lerobot/web";
 import { getUnifiedRobotData } from "../lib/unified-storage";
 import type { RobotConnection } from "@lerobot/web";
@@ -31,9 +32,11 @@ export function TeleoperationPanel({
   const [error, setError] = useState<string | null>(null);
   const [, setIsInitialized] = useState(false);
 
-  const teleoperationProcessRef = useRef<TeleoperationProcess | null>(null);
+  // Separate refs for keyboard and direct teleoperators
+  const keyboardProcessRef = useRef<TeleoperationProcess | null>(null);
+  const directProcessRef = useRef<TeleoperationProcess | null>(null);
 
-  // Initialize teleoperation process
+  // Initialize both teleoperation processes
   useEffect(() => {
     const initializeTeleoperation = async () => {
       if (!robot || !robot.robotType) {
@@ -52,18 +55,36 @@ export function TeleoperationPanel({
           }
         }
 
-        // Create teleoperation process using clean library API
-        const process = await teleoperate(robot, {
+        // Create keyboard teleoperation process
+        const keyboardConfig: TeleoperateConfig = {
+          robot: robot,
+          teleop: {
+            type: "keyboard",
+          },
           calibrationData,
           onStateUpdate: (state: TeleoperationState) => {
             setTeleoperationState(state);
           },
-        });
+        };
+        const keyboardProcess = await teleoperate(keyboardConfig);
 
-        teleoperationProcessRef.current = process;
-        setTeleoperationState(process.getState());
+        // Create direct teleoperation process
+        const directConfig: TeleoperateConfig = {
+          robot: robot,
+          teleop: {
+            type: "direct",
+          },
+          calibrationData,
+        };
+        const directProcess = await teleoperate(directConfig);
+
+        keyboardProcessRef.current = keyboardProcess;
+        directProcessRef.current = directProcess;
+        setTeleoperationState(keyboardProcess.getState());
         setIsInitialized(true);
         setError(null);
+
+        console.log("✅ Initialized both keyboard and direct teleoperators");
       } catch (error) {
         const errorMessage =
           error instanceof Error
@@ -78,9 +99,13 @@ export function TeleoperationPanel({
 
     return () => {
       // Cleanup on unmount
-      if (teleoperationProcessRef.current) {
-        teleoperationProcessRef.current.disconnect();
-        teleoperationProcessRef.current = null;
+      if (keyboardProcessRef.current) {
+        keyboardProcessRef.current.disconnect();
+        keyboardProcessRef.current = null;
+      }
+      if (directProcessRef.current) {
+        directProcessRef.current.disconnect();
+        directProcessRef.current = null;
       }
     };
   }, [robot]);
@@ -88,24 +113,22 @@ export function TeleoperationPanel({
   // Keyboard event handlers
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
-      if (!teleoperationState.isActive || !teleoperationProcessRef.current)
-        return;
+      if (!teleoperationState.isActive || !keyboardProcessRef.current) return;
 
       const key = event.key;
       event.preventDefault();
-      teleoperationProcessRef.current.updateKeyState(key, true);
+      keyboardProcessRef.current.updateKeyState(key, true);
     },
     [teleoperationState.isActive]
   );
 
   const handleKeyUp = useCallback(
     (event: KeyboardEvent) => {
-      if (!teleoperationState.isActive || !teleoperationProcessRef.current)
-        return;
+      if (!teleoperationState.isActive || !keyboardProcessRef.current) return;
 
       const key = event.key;
       event.preventDefault();
-      teleoperationProcessRef.current.updateKeyState(key, false);
+      keyboardProcessRef.current.updateKeyState(key, false);
     },
     [teleoperationState.isActive]
   );
@@ -124,14 +147,15 @@ export function TeleoperationPanel({
   }, [teleoperationState.isActive, handleKeyDown, handleKeyUp]);
 
   const handleStart = () => {
-    if (!teleoperationProcessRef.current) {
+    if (!keyboardProcessRef.current || !directProcessRef.current) {
       setError("Teleoperation not initialized");
       return;
     }
 
     try {
-      teleoperationProcessRef.current.start();
-      console.log("🎮 Teleoperation started");
+      keyboardProcessRef.current.start();
+      directProcessRef.current.start();
+      console.log("🎮 Both keyboard and direct teleoperation started");
     } catch (error) {
       const errorMessage =
         error instanceof Error
@@ -142,36 +166,46 @@ export function TeleoperationPanel({
   };
 
   const handleStop = () => {
-    if (!teleoperationProcessRef.current) return;
-
-    teleoperationProcessRef.current.stop();
-    console.log("🛑 Teleoperation stopped");
+    if (keyboardProcessRef.current) {
+      keyboardProcessRef.current.stop();
+    }
+    if (directProcessRef.current) {
+      directProcessRef.current.stop();
+    }
+    console.log("🛑 Both keyboard and direct teleoperation stopped");
   };
 
   const handleClose = () => {
-    if (teleoperationProcessRef.current) {
-      teleoperationProcessRef.current.stop();
+    if (keyboardProcessRef.current) {
+      keyboardProcessRef.current.stop();
+    }
+    if (directProcessRef.current) {
+      directProcessRef.current.stop();
     }
     onClose();
   };
 
   const simulateKeyPress = (key: string) => {
-    if (!teleoperationProcessRef.current) return;
-    teleoperationProcessRef.current.updateKeyState(key, true);
+    if (!keyboardProcessRef.current) return;
+    keyboardProcessRef.current.updateKeyState(key, true);
   };
 
   const simulateKeyRelease = (key: string) => {
-    if (!teleoperationProcessRef.current) return;
-    teleoperationProcessRef.current.updateKeyState(key, false);
+    if (!keyboardProcessRef.current) return;
+    keyboardProcessRef.current.updateKeyState(key, false);
   };
 
+  // Unified motor control: Both sliders AND keyboard use the same teleoperator
+  // This ensures the UI always shows the correct motor positions
   const moveMotorToPosition = async (motorIndex: number, position: number) => {
-    if (!teleoperationProcessRef.current) return;
+    if (!keyboardProcessRef.current) return;
 
     try {
       const motorName = teleoperationState.motorConfigs[motorIndex]?.name;
       if (motorName) {
-        await teleoperationProcessRef.current.moveMotor(motorName, position);
+        const keyboardTeleoperator = keyboardProcessRef.current
+          .teleoperator as any;
+        await keyboardTeleoperator.moveMotor(motorName, position);
       }
     } catch (error) {
       console.warn(
@@ -189,7 +223,7 @@ export function TeleoperationPanel({
   // Virtual keyboard component
   const VirtualKeyboard = () => {
     const isKeyPressed = (key: string) => {
-      return keyStates[key]?.pressed || false;
+      return keyStates?.[key]?.pressed || false;
     };
 
     const KeyButton = ({
@@ -208,41 +242,18 @@ export function TeleoperationPanel({
           keyCode as keyof typeof SO100_KEYBOARD_CONTROLS
         ];
       const pressed = isKeyPressed(keyCode);
-      const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-      const startContinuousPress = () => {
-        if (!isActive || !teleoperationProcessRef.current) return;
-
-        // Initial press
+      const handleMouseDown = (e: React.MouseEvent) => {
+        e.preventDefault();
+        if (!isActive) return;
         simulateKeyPress(keyCode);
-
-        // Set up continuous updates to maintain key state
-        // Update every 50ms to stay well within the 10 second timeout
-        intervalRef.current = setInterval(() => {
-          if (teleoperationProcessRef.current) {
-            simulateKeyPress(keyCode);
-          }
-        }, 50);
       };
 
-      const stopContinuousPress = () => {
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current);
-          intervalRef.current = null;
-        }
-        if (isActive) {
-          simulateKeyRelease(keyCode);
-        }
+      const handleMouseUp = (e: React.MouseEvent) => {
+        e.preventDefault();
+        if (!isActive) return;
+        simulateKeyRelease(keyCode);
       };
-
-      // Cleanup interval on unmount
-      useEffect(() => {
-        return () => {
-          if (intervalRef.current) {
-            clearInterval(intervalRef.current);
-          }
-        };
-      }, []);
 
       return (
         <Button
@@ -259,18 +270,9 @@ export function TeleoperationPanel({
             ${!isActive ? "opacity-50 cursor-not-allowed" : ""}
           `}
           disabled={!isActive}
-          onMouseDown={(e) => {
-            e.preventDefault();
-            startContinuousPress();
-          }}
-          onMouseUp={(e) => {
-            e.preventDefault();
-            stopContinuousPress();
-          }}
-          onMouseLeave={(e) => {
-            e.preventDefault();
-            stopContinuousPress();
-          }}
+          onMouseDown={handleMouseDown}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
           title={control?.description || keyCode}
         >
           {children}
@@ -413,8 +415,9 @@ export function TeleoperationPanel({
                 <span className="text-sm text-gray-600">Active Keys</span>
                 <Badge variant="outline">
                   {
-                    Object.values(keyStates).filter((state) => state.pressed)
-                      .length
+                    Object.values(keyStates || {}).filter(
+                      (state) => state.pressed
+                    ).length
                   }
                 </Badge>
               </div>

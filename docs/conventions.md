@@ -20,15 +20,19 @@
 - **Direct Library Usage**: End users call library functions directly (e.g., `calibrate()`, `teleoperate()`) - avoid unnecessary abstraction layers
 - **Comments**: Write about the functionality, not what you did. We only need to know what the code is doing to make it more easy to understand, not a history of the changes
 - **No Reference Comments**: Never write comments like "same pattern as calibrate.ts", "matches Node.js", "copied from X", etc. Comments should explain what the code does, not where it came from or what it's similar to
-- **No Change Explanation Comments**: NEVER add comments explaining what you changed or why you removed something. Examples of forbidden comments:
+- **ABSOLUTELY FORBIDDEN: No Change Explanation Comments**: NEVER EVER add comments explaining what you changed, what's new, what's updated, or why you removed something. This is a standard library - there is no "new API", no "old way", no "updated approach". Just code that does what it does. Examples of STRICTLY FORBIDDEN comments:
 
+  - `// Create teleoperation process using new API`
+  - `// Updated API to match Node.js`
+  - `// New extensible architecture`
+  - `// Breaking change from old API`
   - `// React import not needed with modern JSX transform`
   - `// Removed unused import`
   - `// Note: Connection manager registration removed for build compatibility`
   - `// Card components not needed in this file`
   - `// SerialPortRequestOptions unused in current implementation`
 
-  Just make the change cleanly without explaining it in comments.
+  **VIOLATION OF THIS RULE IS NOT TOLERATED.** Just make the change cleanly without explaining it in comments. If you catch yourself writing "new", "old", "updated", "changed", "removed", "added" in a comment - DELETE IT.
 
 ## Project Goals
 

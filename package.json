@@ -42,7 +42,7 @@
     "install-global": "pnpm run build && npm link"
   },
   "dependencies": {
-    "@lerobot/web": "^0.1.1",
+    "@lerobot/web": "workspace:*",
     "@radix-ui/react-dialog": "^1.1.14",
     "@radix-ui/react-progress": "^1.1.7",
     "log-update": "^6.1.0",

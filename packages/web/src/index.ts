@@ -35,6 +35,9 @@ export type {
   MotorConfig,
   TeleoperationState,
   TeleoperationProcess,
+  TeleoperateConfig,
+  TeleoperatorConfig,
+  DirectTeleoperatorConfig,
 } from "./types/teleoperation.js";
 
 export type {
@@ -48,3 +51,4 @@ export {
   createSO100Config,
   SO100_KEYBOARD_CONTROLS,
 } from "./robots/so100_config.js";
+export { KEYBOARD_TELEOPERATOR_DEFAULTS } from "./teleoperators/index.js";
