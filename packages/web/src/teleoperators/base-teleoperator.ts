@@ -48,6 +48,9 @@ export abstract class BaseWebTeleoperator implements WebTeleoperator {
 
   async disconnect(): Promise<void> {
     this.stop();
+    if (this.port && "close" in this.port) {
+      await (this.port as any).close();
+    }
   }
 
   onMotorConfigsUpdate(motorConfigs: MotorConfig[]): void {

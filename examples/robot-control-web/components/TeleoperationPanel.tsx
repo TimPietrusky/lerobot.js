@@ -99,14 +99,22 @@ export function TeleoperationPanel({
 
     return () => {
       // Cleanup on unmount
-      if (keyboardProcessRef.current) {
-        keyboardProcessRef.current.disconnect();
-        keyboardProcessRef.current = null;
-      }
-      if (directProcessRef.current) {
-        directProcessRef.current.disconnect();
-        directProcessRef.current = null;
-      }
+      const cleanup = async () => {
+        try {
+          if (keyboardProcessRef.current) {
+            await keyboardProcessRef.current.disconnect();
+            keyboardProcessRef.current = null;
+          }
+          if (directProcessRef.current) {
+            await directProcessRef.current.disconnect();
+            directProcessRef.current = null;
+          }
+          console.log("🧹 Teleoperation cleanup completed");
+        } catch (error) {
+          console.warn("Error during teleoperation cleanup:", error);
+        }
+      };
+      cleanup();
     };
   }, [robot]);
 
@@ -165,22 +173,33 @@ export function TeleoperationPanel({
     }
   };
 
-  const handleStop = () => {
-    if (keyboardProcessRef.current) {
-      keyboardProcessRef.current.stop();
+  const handleStop = async () => {
+    try {
+      if (keyboardProcessRef.current) {
+        keyboardProcessRef.current.stop();
+      }
+      if (directProcessRef.current) {
+        directProcessRef.current.stop();
+      }
+      console.log("🛑 Both keyboard and direct teleoperation stopped");
+    } catch (error) {
+      console.warn("Error during teleoperation stop:", error);
     }
-    if (directProcessRef.current) {
-      directProcessRef.current.stop();
-    }
-    console.log("🛑 Both keyboard and direct teleoperation stopped");
   };
 
-  const handleClose = () => {
-    if (keyboardProcessRef.current) {
-      keyboardProcessRef.current.stop();
-    }
-    if (directProcessRef.current) {
-      directProcessRef.current.stop();
+  const handleClose = async () => {
+    try {
+      if (keyboardProcessRef.current) {
+        keyboardProcessRef.current.stop();
+        await keyboardProcessRef.current.disconnect();
+      }
+      if (directProcessRef.current) {
+        directProcessRef.current.stop();
+        await directProcessRef.current.disconnect();
+      }
+      console.log("🔌 Properly disconnected from robot");
+    } catch (error) {
+      console.warn("Error during teleoperation cleanup:", error);
     }
     onClose();
   };

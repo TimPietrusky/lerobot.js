@@ -57,9 +57,9 @@ export interface USB {
 }
 
 /**
- * Options for findPort function
+ * Config for findPort function
  */
-export interface FindPortOptions {
+export interface FindPortConfig {
   // Auto-connect mode: provide robot configs to connect to
   robotConfigs?: RobotConfig[];
 

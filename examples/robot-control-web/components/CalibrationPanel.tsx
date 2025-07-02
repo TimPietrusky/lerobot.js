@@ -92,8 +92,9 @@ export function CalibrationPanel({ robot, onFinish }: CalibrationPanelProps) {
       setIsCalibrating(true);
       initializeMotorData();
 
-      // Use the simple calibrate API - just pass the robot connection
-      const process = await calibrate(robot, {
+      // Use the unified config API for calibration
+      const process = await calibrate({
+        robot,
         onLiveUpdate: (data) => {
           setMotorData(data);
           setStatus(

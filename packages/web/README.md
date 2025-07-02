@@ -6,7 +6,7 @@ Browser-native robotics control using WebSerial and WebUSB APIs.
 
 - **Direct Hardware Control**: STS3215 motor communication via WebSerial API
 - **Device Persistence**: WebUSB API for automatic robot reconnection
-- **Real-time Teleoperation**: Keyboard control with live motor feedback
+- **Extensible Teleoperation**: Multiple input devices (keyboard, direct control, future: leader arms, joysticks)
 - **Motor Calibration**: Automated homing offset and range recording
 - **Cross-browser Support**: Chrome/Edge 89+ with HTTPS or localhost
 - **TypeScript Native**: Full type safety and IntelliSense support
@@ -27,7 +27,14 @@ yarn add @lerobot/web
 ## Quick Start
 
 ```typescript
-import { findPort, releaseMotors, calibrate, teleoperate } from "@lerobot/web";
+import {
+  findPort,
+  releaseMotors,
+  calibrate,
+  teleoperate,
+  KeyboardTeleoperator,
+  DirectTeleoperator,
+} from "@lerobot/web";
 
 // 1. Find and connect to hardware
 const findProcess = await findPort();
@@ -39,7 +46,8 @@ await releaseMotors(robot);
 console.log("🔓 Motors released - you can move the robot by hand");
 
 // 3. Calibrate motors
-const calibrationProcess = await calibrate(robot, {
+const calibrationProcess = await calibrate({
+  robot,
   onProgress: (message) => console.log(message),
   onLiveUpdate: (data) => console.log("Live positions:", data),
 });
@@ -54,7 +62,11 @@ setTimeout(() => {
 const calibrationData = await calibrationProcess.result;
 
 // 4. Start teleoperation
-const teleop = await teleoperate(robot, { calibrationData });
+const teleop = await teleoperate({
+  robot,
+  calibrationData,
+  teleop: { type: "keyboard" }, // or { type: "direct" }
+});
 teleop.start();
 
 // Stop teleoperation when done
@@ -66,7 +78,7 @@ setTimeout(() => {
 
 ## Core API
 
-### `findPort(options?): Promise<FindPortProcess>`
+### `findPort(config?): Promise<FindPortProcess>`
 
 Discovers and connects to robotics hardware using WebSerial API. Two modes: interactive (shows port dialog) and auto-connect (reconnects to known robots).
 
@@ -157,12 +169,13 @@ interface RobotConfig {
 
 ---
 
-### `calibrate(robot, options?): Promise<CalibrationProcess>`
+### `calibrate(config): Promise<CalibrationProcess>`
 
 Calibrates motor homing offsets and records range of motion.
 
 ```typescript
-const calibrationProcess = await calibrate(robot, {
+const calibrationProcess = await calibrate({
+  robot,
   onProgress: (message) => {
     console.log(message); // "⚙️ Setting motor homing offsets"
   },
@@ -187,8 +200,8 @@ const calibrationData = await calibrationProcess.result;
 
 #### Parameters
 
-- `robot: RobotConnection` - Connected robot from `findPort()`
-- `options?: CalibrationOptions`
+- `config: CalibrateConfig`
+  - `robot: RobotConnection` - Connected robot from `findPort()`
   - `onProgress?: (message: string) => void` - Progress messages
   - `onLiveUpdate?: (data: LiveCalibrationData) => void` - Real-time position updates
 
@@ -214,13 +227,19 @@ const calibrationData = await calibrationProcess.result;
 
 ---
 
-### `teleoperate(robot, options?): Promise<TeleoperationProcess>`
+### `teleoperate(config): Promise<TeleoperationProcess>`
 
-Enables real-time robot control with keyboard input and programmatic movement.
+Enables real-time robot control with extensible input devices. Supports keyboard control and direct programmatic movement, with architecture for future input devices like leader arms and joysticks.
+
+#### Keyboard Teleoperation
 
 ```typescript
-const teleop = await teleoperate(robot, {
+import { teleoperate, KeyboardTeleoperator } from "@lerobot/web";
+
+const keyboardTeleop = await teleoperate({
+  robot,
   calibrationData: savedCalibrationData, // From calibrate()
+  teleop: { type: "keyboard" }, // Uses keyboard controls
   onStateUpdate: (state) => {
     console.log(`Active: ${state.isActive}`);
     console.log(`Motors:`, state.motorConfigs);
@@ -228,37 +247,62 @@ const teleop = await teleoperate(robot, {
 });
 
 // Start keyboard control
-teleop.start();
+keyboardTeleop.start();
 
-// Programmatic control
-await teleop.moveMotor("shoulder_pan", 2048);
-await teleop.setMotorPositions({
+// Access keyboard-specific methods
+const keyboardController = keyboardTeleop.teleoperator as KeyboardTeleoperator;
+await keyboardController.moveMotor("shoulder_pan", 2048);
+
+// Stop when finished
+setTimeout(() => keyboardTeleop.stop(), 30000);
+```
+
+#### Direct Teleoperation
+
+```typescript
+import { teleoperate, DirectTeleoperator } from "@lerobot/web";
+
+const directTeleop = await teleoperate({
+  robot,
+  calibrationData: savedCalibrationData,
+  teleop: { type: "direct" }, // For programmatic control
+  onStateUpdate: (state) => {
+    console.log(`Motors:`, state.motorConfigs);
+  },
+});
+
+directTeleop.start();
+
+// Access direct control methods
+const directController = directTeleop.teleoperator as DirectTeleoperator;
+await directController.moveMotor("shoulder_pan", 2048);
+await directController.setMotorPositions({
   shoulder_pan: 2048,
   elbow_flex: 1500,
 });
 
-// Stop teleoperation when finished
-setTimeout(() => {
-  console.log("Stopping teleoperation...");
-  teleop.stop();
-}, 30000); // Or call teleop.stop() when user is done
+// Stop when finished
+setTimeout(() => directTeleop.stop(), 30000);
 ```
 
 #### Parameters
 
-- `robot: RobotConnection` - Connected robot from `findPort()`
-- `options?: TeleoperationOptions`
+- `config: TeleoperateConfig`
+  - `robot: RobotConnection` - Connected robot from `findPort()`
+  - `teleop: TeleoperatorConfig` - Teleoperator configuration:
+    - `{ type: "keyboard", stepSize?: number, updateRate?: number, keyTimeout?: number }` - Keyboard control
+    - `{ type: "direct" }` - Direct programmatic control
   - `calibrationData?: { [motorName: string]: any }` - Calibration data from `calibrate()`
   - `onStateUpdate?: (state: TeleoperationState) => void` - State change callback
 
 #### Returns: `TeleoperationProcess`
 
-- `start(): void` - Begin keyboard teleoperation
-- `stop(): void` - Stop teleoperation and clear key states
-- `updateKeyState(key: string, pressed: boolean): void` - Manual key state control
+- `start(): void` - Begin teleoperation
+- `stop(): void` - Stop teleoperation and clear states
 - `getState(): TeleoperationState` - Current state and motor positions
-- `moveMotor(motorName: string, position: number): Promise<boolean>` - Move single motor
-- `setMotorPositions(positions: { [motorName: string]: number }): Promise<boolean>` - Move multiple motors
+- `teleoperator: BaseWebTeleoperator` - Access teleoperator-specific methods:
+  - **KeyboardTeleoperator**: `updateKeyState()`, `moveMotor()`, etc.
+  - **DirectTeleoperator**: `moveMotor()`, `setMotorPositions()`, etc.
 - `disconnect(): Promise<void>` - Stop and disconnect
 
 #### Keyboard Controls (SO-100)

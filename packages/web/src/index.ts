@@ -26,6 +26,12 @@ export type {
 } from "./types/robot-connection.js";
 
 export type {
+  FindPortConfig,
+  FindPortProcess,
+} from "./types/port-discovery.js";
+
+export type {
+  CalibrateConfig,
   WebCalibrationResults,
   LiveCalibrationData,
   CalibrationProcess,

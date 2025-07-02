@@ -18,6 +18,7 @@ import { createSO100Config } from "./robots/so100_config.js";
 import type { RobotConnection } from "./types/robot-connection.js";
 import type { RobotHardwareConfig } from "./types/robot-config.js";
 import type {
+  CalibrateConfig,
   WebCalibrationResults,
   LiveCalibrationData,
   CalibrationProcess,
@@ -127,29 +128,27 @@ function applyRobotSpecificRangeAdjustments(
  * Main calibrate function - simple API, handles robot types internally
  */
 export async function calibrate(
-  robotConnection: RobotConnection,
-  options?: {
-    onLiveUpdate?: (data: LiveCalibrationData) => void;
-    onProgress?: (message: string) => void;
-  }
+  config: CalibrateConfig
 ): Promise<CalibrationProcess> {
+  const { robot, onLiveUpdate, onProgress } = config;
+
   // Validate required fields
-  if (!robotConnection.robotType) {
+  if (!robot.robotType) {
     throw new Error(
       "Robot type is required for calibration. Please configure the robot first."
     );
   }
 
   // Create web serial port wrapper
-  const port = new WebSerialPortWrapper(robotConnection.port);
+  const port = new WebSerialPortWrapper(robot.port);
   await port.initialize();
 
   // Get robot-specific configuration
-  let config: RobotHardwareConfig;
-  if (robotConnection.robotType.startsWith("so100")) {
-    config = createSO100Config(robotConnection.robotType);
+  let robotConfig: RobotHardwareConfig;
+  if (robot.robotType.startsWith("so100")) {
+    robotConfig = createSO100Config(robot.robotType);
   } else {
-    throw new Error(`Unsupported robot type: ${robotConnection.robotType}`);
+    throw new Error(`Unsupported robot type: ${robot.robotType}`);
   }
 
   let shouldStop = false;
@@ -158,26 +157,26 @@ export async function calibrate(
   // Start calibration process
   const resultPromise = (async (): Promise<WebCalibrationResults> => {
     // Step 1: Set homing offsets (automatic)
-    options?.onProgress?.("⚙️ Setting motor homing offsets");
+    onProgress?.("⚙️ Setting motor homing offsets");
     const homingOffsets = await setHomingOffsets(
       port,
-      config.motorIds,
-      config.motorNames
+      robotConfig.motorIds,
+      robotConfig.motorNames
     );
 
     // Step 2: Record ranges of motion with live updates
     const { rangeMins, rangeMaxes } = await recordRangesOfMotion(
       port,
-      config.motorIds,
-      config.motorNames,
+      robotConfig.motorIds,
+      robotConfig.motorNames,
       stopFunction,
-      options?.onLiveUpdate
+      onLiveUpdate
     );
 
     // Step 3: Apply robot-specific range adjustments
     applyRobotSpecificRangeAdjustments(
-      robotConnection.robotType!,
-      config.protocol,
+      robot.robotType!,
+      robotConfig.protocol,
       rangeMins,
       rangeMaxes
     );
@@ -185,8 +184,8 @@ export async function calibrate(
     // Step 4: Write hardware position limits to motors
     await writeHardwarePositionLimits(
       port,
-      config.motorIds,
-      config.motorNames,
+      robotConfig.motorIds,
+      robotConfig.motorNames,
       rangeMins,
       rangeMaxes
     );
@@ -194,13 +193,13 @@ export async function calibrate(
     // Step 5: Compile results
     const results: WebCalibrationResults = {};
 
-    for (let i = 0; i < config.motorNames.length; i++) {
-      const motorName = config.motorNames[i];
-      const motorId = config.motorIds[i];
+    for (let i = 0; i < robotConfig.motorNames.length; i++) {
+      const motorName = robotConfig.motorNames[i];
+      const motorId = robotConfig.motorIds[i];
 
       results[motorName] = {
         id: motorId,
-        drive_mode: config.driveModes[i],
+        drive_mode: robotConfig.driveModes[i],
         homing_offset: homingOffsets[motorName],
         range_min: rangeMins[motorName],
         range_max: rangeMaxes[motorName],

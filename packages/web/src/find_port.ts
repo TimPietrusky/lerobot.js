@@ -42,7 +42,7 @@ import type {
 } from "./types/robot-connection.js";
 import type {
   Serial,
-  FindPortOptions,
+  FindPortConfig,
   FindPortProcess,
   USBDevice,
 } from "./types/port-discovery.js";
@@ -171,7 +171,7 @@ async function getStoredUSBDeviceMetadata(port: SerialPort): Promise<{
  * Interactive mode: Show native dialogs for port + device selection
  */
 async function findPortInteractive(
-  options: FindPortOptions
+  options: FindPortConfig
 ): Promise<RobotConnection[]> {
   const { onMessage } = options;
 
@@ -239,7 +239,7 @@ async function findPortInteractive(
  */
 async function findPortAutoConnect(
   robotConfigs: RobotConfig[],
-  options: FindPortOptions
+  options: FindPortConfig
 ): Promise<RobotConnection[]> {
   const { onMessage } = options;
   const results: RobotConnection[] = [];
@@ -273,6 +273,8 @@ async function findPortAutoConnect(
           const wasOpen = port.readable !== null;
           if (!wasOpen) {
             await port.open({ baudRate: 1000000 });
+            // Small delay to allow port to stabilize after opening
+            await new Promise((resolve) => setTimeout(resolve, 100));
           }
 
           // Test connection by trying basic motor communication
@@ -280,7 +282,18 @@ async function findPortAutoConnect(
           await portWrapper.initialize();
 
           // Try to read from motor ID 1 (most robots have at least one motor)
-          const testPosition = await readMotorPosition(portWrapper, 1);
+          // Retry mechanism for more robust connection testing
+          let testPosition: number | null = null;
+          for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+              testPosition = await readMotorPosition(portWrapper, 1);
+              if (testPosition !== null) break;
+              await new Promise((resolve) => setTimeout(resolve, 50));
+            } catch (retryError) {
+              if (attempt === 2) throw retryError;
+              await new Promise((resolve) => setTimeout(resolve, 100));
+            }
+          }
 
           // If we can read a position, this is likely a working robot port
           if (testPosition !== null) {
@@ -367,7 +380,7 @@ async function findPortAutoConnect(
  * Mode 2: Auto-connect - Returns RobotConnection[]
  */
 export async function findPort(
-  options: FindPortOptions = {}
+  config: FindPortConfig = {}
 ): Promise<FindPortProcess> {
   // Check WebSerial support
   if (!isWebSerialSupported()) {
@@ -376,7 +389,7 @@ export async function findPort(
     );
   }
 
-  const { robotConfigs, onMessage } = options;
+  const { robotConfigs, onMessage } = config;
   let stopped = false;
 
   // Determine mode
@@ -395,9 +408,9 @@ export async function findPort(
     }
 
     if (isAutoConnectMode) {
-      return await findPortAutoConnect(robotConfigs!, options);
+      return await findPortAutoConnect(robotConfigs!, config);
     } else {
-      return await findPortInteractive(options);
+      return await findPortInteractive(config);
     }
   })();
 

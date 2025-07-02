@@ -68,6 +68,13 @@ export class WebSerialPortWrapper {
   }
 
   async close(): Promise<void> {
-    // Don't close the port itself - just wrapper cleanup
+    try {
+      if (this.port && this.port.readable) {
+        await this.port.close();
+        console.log("🔌 Serial port closed successfully");
+      }
+    } catch (error) {
+      console.warn("Error closing serial port:", error);
+    }
   }
 }
