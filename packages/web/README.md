@@ -1,10 +1,11 @@
 # @lerobot/web
 
-Browser-native robotics control using WebSerial API. No Python dependencies required.
+Browser-native robotics control using WebSerial and WebUSB APIs.
 
 ## Features
 
 - **Direct Hardware Control**: STS3215 motor communication via WebSerial API
+- **Device Persistence**: WebUSB API for automatic robot reconnection
 - **Real-time Teleoperation**: Keyboard control with live motor feedback
 - **Motor Calibration**: Automated homing offset and range recording
 - **Cross-browser Support**: Chrome/Edge 89+ with HTTPS or localhost
@@ -13,29 +14,54 @@ Browser-native robotics control using WebSerial API. No Python dependencies requ
 ## Installation
 
 ```bash
+# pnpm (recommended)
+pnpm add @lerobot/web
+
+# npm
 npm install @lerobot/web
+
+# yarn
+yarn add @lerobot/web
 ```
 
 ## Quick Start
 
 ```typescript
-import { findPort, calibrate, teleoperate } from "@lerobot/web";
+import { findPort, releaseMotors, calibrate, teleoperate } from "@lerobot/web";
 
 // 1. Find and connect to hardware
 const findProcess = await findPort();
 const robots = await findProcess.result;
 const robot = robots[0];
 
-// 2. Calibrate motors
+// 2. Release motors for manual positioning
+await releaseMotors(robot);
+console.log("🔓 Motors released - you can move the robot by hand");
+
+// 3. Calibrate motors
 const calibrationProcess = await calibrate(robot, {
   onProgress: (message) => console.log(message),
   onLiveUpdate: (data) => console.log("Live positions:", data),
 });
+
+// Move robot through its full range of motion...
+// When done, stop calibration to proceed
+setTimeout(() => {
+  console.log("⏱️ Stopping calibration...");
+  calibrationProcess.stop();
+}, 10000); // Stop after 10 seconds, or call stop() when user is ready
+
 const calibrationData = await calibrationProcess.result;
 
-// 3. Start teleoperation
+// 4. Start teleoperation
 const teleop = await teleoperate(robot, { calibrationData });
 teleop.start();
+
+// Stop teleoperation when done
+setTimeout(() => {
+  console.log("⏹️ Stopping teleoperation...");
+  teleop.stop();
+}, 30000); // Stop after 30 seconds, or call stop() when needed
 ```
 
 ## Core API
@@ -109,55 +135,6 @@ console.log(
 );
 ```
 
-#### Complete Workflow Example
-
-```typescript
-// First run: Interactive discovery
-async function discoverNewRobots() {
-  const findProcess = await findPort();
-  const robots = await findProcess.result;
-
-  for (const robot of robots) {
-    // Configure each robot
-    robot.robotType = "so100_follower"; // User choice
-    robot.robotId = `robot_${Date.now()}`; // User input
-
-    // Save for auto-connect
-    localStorage.setItem(
-      `robot-${robot.serialNumber}`,
-      JSON.stringify({
-        robotType: robot.robotType,
-        robotId: robot.robotId,
-        serialNumber: robot.serialNumber,
-      })
-    );
-  }
-
-  return robots;
-}
-
-// Subsequent runs: Auto-connect
-async function reconnectSavedRobots() {
-  // Load saved robot configs
-  const robotConfigs = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (key?.startsWith("robot-")) {
-      const saved = JSON.parse(localStorage.getItem(key)!);
-      robotConfigs.push(saved);
-    }
-  }
-
-  if (robotConfigs.length === 0) {
-    return discoverNewRobots(); // No saved robots, go interactive
-  }
-
-  // Auto-connect to saved robots
-  const findProcess = await findPort({ robotConfigs });
-  return await findProcess.result;
-}
-```
-
 #### RobotConfig Structure
 
 ```typescript
@@ -198,7 +175,11 @@ const calibrationProcess = await calibrate(robot, {
 });
 
 // Move robot through full range of motion...
-// Press any key when done
+// When finished recording ranges, stop the calibration
+console.log("Move robot through its range, then stopping in 10 seconds...");
+setTimeout(() => {
+  calibrationProcess.stop(); // Stop range recording
+}, 10000);
 
 const calibrationData = await calibrationProcess.result;
 // Save calibration data to localStorage or file
@@ -256,8 +237,11 @@ await teleop.setMotorPositions({
   elbow_flex: 1500,
 });
 
-// Stop when done
-teleop.stop();
+// Stop teleoperation when finished
+setTimeout(() => {
+  console.log("Stopping teleoperation...");
+  teleop.stop();
+}, 30000); // Or call teleop.stop() when user is done
 ```
 
 #### Parameters
@@ -289,19 +273,6 @@ Escape: Emergency stop
 
 ---
 
-### `isWebSerialSupported(): boolean`
-
-Checks if WebSerial API is available in the current browser.
-
-```typescript
-if (!isWebSerialSupported()) {
-  console.log("Please use Chrome/Edge 89+ with HTTPS or localhost");
-  return;
-}
-```
-
----
-
 ### `releaseMotors(robot, motorIds?): Promise<void>`
 
 Releases motor torque so robot can be moved freely by hand.
@@ -311,7 +282,7 @@ Releases motor torque so robot can be moved freely by hand.
 await releaseMotors(robot);
 
 // Release specific motors only
-await releaseMotors(robot, [1, 2, 3]); // First 3 motors
+await releaseMotors(robot, [1, 2, 3]);
 ```
 
 #### Parameters
@@ -319,145 +290,12 @@ await releaseMotors(robot, [1, 2, 3]); // First 3 motors
 - `robot: RobotConnection` - Connected robot
 - `motorIds?: number[]` - Specific motor IDs (default: all motors for robot type)
 
-## Types
-
-### `RobotConnection`
-
-```typescript
-interface RobotConnection {
-  port: SerialPort; // WebSerial port object
-  name: string; // Display name
-  isConnected: boolean; // Connection status
-  robotType?: "so100_follower" | "so100_leader";
-  robotId?: string; // User-defined ID
-  serialNumber: string; // Device serial number
-  error?: string; // Error message if failed
-}
-```
-
-### `WebCalibrationResults`
-
-```typescript
-interface WebCalibrationResults {
-  [motorName: string]: {
-    id: number; // Motor ID (1-6)
-    drive_mode: number; // Drive mode (0 for SO-100)
-    homing_offset: number; // Calculated offset
-    range_min: number; // Minimum position
-    range_max: number; // Maximum position
-  };
-}
-```
-
-### `TeleoperationState`
-
-```typescript
-interface TeleoperationState {
-  isActive: boolean; // Whether teleoperation is running
-  motorConfigs: MotorConfig[]; // Current motor positions and limits
-  lastUpdate: number; // Timestamp of last update
-  keyStates: { [key: string]: { pressed: boolean; timestamp: number } };
-}
-```
-
-### `MotorConfig`
-
-```typescript
-interface MotorConfig {
-  id: number; // Motor ID
-  name: string; // Motor name (e.g., "shoulder_pan")
-  currentPosition: number; // Current position
-  minPosition: number; // Position limit minimum
-  maxPosition: number; // Position limit maximum
-}
-```
-
-### `RobotConfig`
-
-```typescript
-interface RobotConfig {
-  robotType: "so100_follower" | "so100_leader";
-  robotId: string; // Your custom identifier (e.g., "left_arm")
-  serialNumber: string; // Device serial number (from previous findPort)
-}
-```
-
-## Advanced Usage
-
-### Custom Motor Communication
-
-```typescript
-import {
-  WebSerialPortWrapper,
-  readMotorPosition,
-  writeMotorPosition,
-} from "@lerobot/web";
-
-const port = new WebSerialPortWrapper(robotConnection.port);
-await port.initialize();
-
-// Read motor position directly
-const position = await readMotorPosition(port, 1);
-
-// Write motor position directly
-await writeMotorPosition(port, 1, 2048);
-```
-
-### Robot Configuration
-
-```typescript
-import { createSO100Config, SO100_KEYBOARD_CONTROLS } from "@lerobot/web";
-
-const config = createSO100Config("so100_follower");
-console.log("Motor names:", config.motorNames);
-console.log("Motor IDs:", config.motorIds);
-console.log("Keyboard controls:", SO100_KEYBOARD_CONTROLS);
-```
-
-### Low-Level Motor Control
-
-```typescript
-import { releaseMotorsLowLevel } from "@lerobot/web";
-
-const port = new WebSerialPortWrapper(robotConnection.port);
-await port.initialize();
-
-// Release specific motors at low level
-await releaseMotorsLowLevel(port, [1, 2, 3]);
-```
-
-## Error Handling
-
-```typescript
-try {
-  const findProcess = await findPort();
-  const robots = await findProcess.result;
-
-  if (robots.length === 0) {
-    throw new Error("No robots found");
-  }
-
-  const robot = robots[0];
-  if (!robot.isConnected) {
-    throw new Error(`Failed to connect: ${robot.error}`);
-  }
-
-  // Proceed with calibration/teleoperation
-} catch (error) {
-  console.error("Robot connection failed:", error.message);
-}
-```
-
 ## Browser Requirements
 
-- **Chrome/Edge 89+** with WebSerial API support
-- **HTTPS or localhost** (required for WebSerial API)
+- **chromium 89+** with WebSerial and WebUSB API support
+- **HTTPS or localhost**
 - **User gesture** required for initial port selection
 
 ## Hardware Support
 
 Currently supports SO-100 follower and leader arms with STS3215 motors. More devices coming soon.
-
-## License
-
-Apache-2.0
