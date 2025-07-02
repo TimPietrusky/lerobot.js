@@ -1,20 +1,13 @@
 # @lerobot/web
 
-Browser-native robotics control using WebSerial and WebUSB APIs.
+interact with your robot in JS (WebSerial + WebUSB), inspired by [LeRobot](https://github.com/huggingface/lerobot)
 
-## Features
-
-- **Direct Hardware Control**: STS3215 motor communication via WebSerial API
-- **Device Persistence**: WebUSB API for automatic robot reconnection
-- **Extensible Teleoperation**: Multiple input devices (keyboard, direct control, future: leader arms, joysticks)
-- **Motor Calibration**: Automated homing offset and range recording
-- **Cross-browser Support**: Chrome/Edge 89+ with HTTPS or localhost
-- **TypeScript Native**: Full type safety and IntelliSense support
+🚀 **[Try the live demo →](https://huggingface.co/spaces/NERDDISCO/LeRobot.js)**
 
 ## Installation
 
 ```bash
-# pnpm (recommended)
+# pnpm
 pnpm add @lerobot/web
 
 # npm
@@ -27,41 +20,29 @@ yarn add @lerobot/web
 ## Quick Start
 
 ```typescript
-import {
-  findPort,
-  releaseMotors,
-  calibrate,
-  teleoperate,
-  KeyboardTeleoperator,
-  DirectTeleoperator,
-} from "@lerobot/web";
+import { findPort, releaseMotors, calibrate, teleoperate } from "@lerobot/web";
 
-// 1. Find and connect to hardware
+// 1. find and connect to hardware like a robot arm
 const findProcess = await findPort();
 const robots = await findProcess.result;
 const robot = robots[0];
 
-// 2. Release motors for manual positioning
+// 2. release the motors and put them into the homing position
 await releaseMotors(robot);
-console.log("🔓 Motors released - you can move the robot by hand");
 
-// 3. Calibrate motors
+// 3. calibrate the motors by moving each motor through its full range of motion
 const calibrationProcess = await calibrate({
   robot,
   onProgress: (message) => console.log(message),
   onLiveUpdate: (data) => console.log("Live positions:", data),
 });
 
-// Move robot through its full range of motion...
-// When done, stop calibration to proceed
-setTimeout(() => {
-  console.log("⏱️ Stopping calibration...");
-  calibrationProcess.stop();
-}, 10000); // Stop after 10 seconds, or call stop() when user is ready
-
+// when done, stop calibration and get the min/max ranges for each motor
+// which we need to control the robot in its defined ranges
+calibrationProcess.stop();
 const calibrationData = await calibrationProcess.result;
 
-// 4. Start teleoperation
+// 4. start controlling the robot arm with your keyboard
 const teleop = await teleoperate({
   robot,
   calibrationData,
@@ -69,11 +50,8 @@ const teleop = await teleoperate({
 });
 teleop.start();
 
-// Stop teleoperation when done
-setTimeout(() => {
-  console.log("⏹️ Stopping teleoperation...");
-  teleop.stop();
-}, 30000); // Stop after 30 seconds, or call stop() when needed
+// stop any control
+teleop.stop();
 ```
 
 ## Core API
