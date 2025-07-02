@@ -1,8 +1,7 @@
 /**
  * @lerobot/web - Web-based robotics control using WebSerial API
  *
- * Control robotics hardware directly from the browser using modern web APIs.
- * No Python dependencies required.
+ * Control robotics hardware directly from the browser using web APIs.
  */
 
 // Core functions
