@@ -55,7 +55,7 @@ jobs:
 
       - name: Commit HF Space changes
         run: |
-          git add README.md examples/cyberpunk-standalone/package.json
+          git add README.md examples/cyberpunk-standalone/package.json packages/web/lerobot-web-*.tgz
           git commit -m "Add HF Space frontmatter and update cyberpunk dependency for deployment" || echo "No changes to commit"
 
       - name: Push to hub
