@@ -39,37 +39,6 @@ export default defineConfig(({ mode }) => {
     };
   }
 
-  if (mode === "cyberpunk") {
-    // Cyberpunk-themed robotics interface
-    return {
-      plugins: [react()],
-      resolve: {
-        alias: {
-          "@": resolve(__dirname, "examples/cyberpunk-standalone/src"),
-          // Only add workspace alias if in workspace environment
-          ...(isWorkspace && {
-            "@lerobot/web": resolve(__dirname, "./packages/web/src"),
-          }),
-        },
-      },
-      css: {
-        postcss: "./postcss.config.mjs",
-      },
-      build: {
-        outDir: resolve(__dirname, "dist/cyberpunk"),
-        rollupOptions: {
-          input: {
-            main: resolve(
-              __dirname,
-              "examples/cyberpunk-standalone/index.html"
-            ),
-          },
-        },
-      },
-      root: resolve(__dirname, "examples/cyberpunk-standalone"),
-    };
-  }
-
   if (mode === "vanilla") {
     // Vanilla mode - current implementation without React
     return {

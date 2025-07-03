@@ -4,8 +4,8 @@ emoji: 🤖
 colorFrom: blue
 colorTo: green
 sdk: static
-app_build_command: npx vite build --mode cyberpunk
-app_file: dist/cyberpunk/index.html
+app_build_command: cd examples/cyberpunk-standalone && pnpm install && pnpm build
+app_file: examples/cyberpunk-standalone/dist/index.html
 pinned: true
 ---
 
