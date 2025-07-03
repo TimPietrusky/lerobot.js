@@ -30,12 +30,15 @@ jobs:
       - name: Build web package
         run: pnpm --filter "@lerobot/web" run build
 
-      - name: Install web package for demo
+      - name: Pack web package and update cyberpunk dependency
         run: |
           cd packages/web
           npm pack
-          cd ../..
-          pnpm add ./packages/web/lerobot-web-*.tgz
+          WEB_VERSION=$(node -p "require('./package.json').version")
+          cd ../../examples/cyberpunk-standalone
+          # Replace workspace dependency with actual version
+          sed -i 's/"@lerobot\/web": "workspace:\*"/"@lerobot\/web": "file:..\/..\/packages\/web\/lerobot-web-'$WEB_VERSION'.tgz"/' package.json
+          echo "Updated cyberpunk package.json to use packed version"
 
       - name: Prepare README for HF Space
         run: |
@@ -50,10 +53,10 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
 
-      - name: Commit HF Space README
+      - name: Commit HF Space changes
         run: |
-          git add README.md
-          git commit -m "Add HF Space frontmatter to README" || echo "No changes to commit"
+          git add README.md examples/cyberpunk-standalone/package.json
+          git commit -m "Add HF Space frontmatter and update cyberpunk dependency for deployment" || echo "No changes to commit"
 
       - name: Push to hub
         env:

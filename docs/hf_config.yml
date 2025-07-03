@@ -1,10 +1,11 @@
 ---
 title: LeRobot.js
 emoji: 🤖
-colorFrom: blue
-colorTo: green
+colorFrom: purple
+colorTo: pink
 sdk: static
-app_build_command: cd examples/cyberpunk-standalone && pnpm install && pnpm build
+license: apache-2.0
+build: "cd examples/cyberpunk-standalone && pnpm install && pnpm build"
 app_file: examples/cyberpunk-standalone/dist/index.html
 pinned: true
 ---
