@@ -10,80 +10,241 @@ import { SetupCards } from "@/components/setup-cards";
 import { DocsSection } from "@/components/docs-section";
 import { RoadmapSection } from "@/components/roadmap-section";
 import { HardwareSupportSection } from "@/components/hardware-support-section";
-import { lerobot } from "@/lib/mock-api";
-import { useLocalStorage } from "@/hooks/use-local-storage";
-import type { RobotConnection } from "@/types/robot";
+import { useToast } from "@/hooks/use-toast";
+import { Toaster } from "@/components/ui/toaster";
+import {
+  findPort,
+  isWebSerialSupported,
+  type RobotConnection,
+  type RobotConfig,
+} from "@lerobot/web";
+import {
+  getAllSavedRobots,
+  getUnifiedRobotData,
+  saveDeviceInfo,
+  removeRobotData,
+  type DeviceInfo,
+} from "@/lib/unified-storage";
 
 function App() {
   const [view, setView] = useState<
     "dashboard" | "calibrating" | "teleoperating"
   >("dashboard");
-  const [robots, setRobots] = useLocalStorage<RobotConnection[]>(
-    "connected-robots",
-    []
-  );
+  const [robots, setRobots] = useState<RobotConnection[]>([]);
   const [selectedRobot, setSelectedRobot] = useState<RobotConnection | null>(
     null
   );
   const [editingRobot, setEditingRobot] = useState<RobotConnection | null>(
     null
   );
-  const [logs, setLogs] = useState<string[]>([]);
   const [isConnecting, setIsConnecting] = useState(false);
   const hardwareSectionRef = useRef<HTMLDivElement>(null);
+  const { toast } = useToast();
+
+  // Check browser support
+  const isSupported = isWebSerialSupported();
+
+  useEffect(() => {
+    if (!isSupported) {
+      toast({
+        title: "Browser Not Supported",
+        description:
+          "WebSerial API is not supported. Please use Chrome, Edge, or another Chromium-based browser.",
+        variant: "destructive",
+      });
+    }
+  }, [isSupported, toast]);
 
   useEffect(() => {
     const loadSavedRobots = async () => {
-      const robotConfigs = robots.map(({ port, ...config }) => config);
-      if (robotConfigs.length > 0) {
-        const findPortProcess = await lerobot.findPort({
-          robotConfigs,
-          onMessage: (msg) => setLogs((prev) => [...prev, msg]),
+      if (!isSupported) return;
+
+      try {
+        setIsConnecting(true);
+
+        // Get saved robot configurations
+        const savedRobots = getAllSavedRobots();
+
+        if (savedRobots.length > 0) {
+          const robotConfigs: RobotConfig[] = savedRobots.map((device) => ({
+            robotType: device.robotType as "so100_follower" | "so100_leader",
+            robotId: device.robotId,
+            serialNumber: device.serialNumber,
+          }));
+
+          // Auto-connect to saved robots
+          const findPortProcess = await findPort({
+            robotConfigs,
+            onMessage: (msg: string) => {
+              console.log("Connection message:", msg);
+            },
+          });
+
+          const reconnectedRobots = await findPortProcess.result;
+
+          // Merge saved device info (names, etc.) with fresh connection data
+          const robotsWithSavedInfo = reconnectedRobots.map((robot) => {
+            const savedData = getUnifiedRobotData(robot.serialNumber || "");
+            if (savedData?.device_info) {
+              return {
+                ...robot,
+                robotId: savedData.device_info.robotId,
+                name: savedData.device_info.robotId, // Use the saved custom name
+                robotType: savedData.device_info.robotType as
+                  | "so100_follower"
+                  | "so100_leader",
+              };
+            }
+            return robot;
+          });
+
+          setRobots(robotsWithSavedInfo);
+        }
+      } catch (error) {
+        console.error("Failed to load saved robots:", error);
+        toast({
+          title: "Connection Error",
+          description: "Failed to reconnect to saved robots",
+          variant: "destructive",
         });
-        const reconnectedRobots = await findPortProcess.result;
-        setRobots(reconnectedRobots);
+      } finally {
+        setIsConnecting(false);
       }
-      setIsConnecting(false);
     };
+
     loadSavedRobots();
-  }, []);
+  }, [isSupported, toast]);
 
   const handleFindNewRobots = async () => {
-    setIsConnecting(true);
-    const findPortProcess = await lerobot.findPort({
-      onMessage: (msg) => setLogs((prev) => [...prev, msg]),
-    });
-    const newRobots = await findPortProcess.result;
-    setRobots((prev) => {
-      const existingIds = new Set(prev.map((r) => r.robotId));
-      const uniqueNewRobots = newRobots.filter(
-        (r) => !existingIds.has(r.robotId)
-      );
-      return [...prev, ...uniqueNewRobots];
-    });
-    if (newRobots.length > 0) {
-      setEditingRobot(newRobots[0]);
+    if (!isSupported) {
+      toast({
+        title: "Browser Not Supported",
+        description: "WebSerial API is required for robot connection",
+        variant: "destructive",
+      });
+      return;
     }
-    setIsConnecting(false);
+
+    try {
+      setIsConnecting(true);
+
+      // Interactive mode - show browser dialog
+      const findPortProcess = await findPort({
+        onMessage: (msg: string) => {
+          console.log("Find port message:", msg);
+        },
+      });
+
+      const newRobots = await findPortProcess.result;
+
+      if (newRobots.length > 0) {
+        setRobots((prev: RobotConnection[]) => {
+          const existingSerialNumbers = new Set(
+            prev.map((r: RobotConnection) => r.serialNumber)
+          );
+          const uniqueNewRobots = newRobots.filter(
+            (r: RobotConnection) => !existingSerialNumbers.has(r.serialNumber)
+          );
+
+          // Auto-edit first new robot for configuration
+          if (uniqueNewRobots.length > 0) {
+            setEditingRobot(uniqueNewRobots[0]);
+          }
+
+          return [...prev, ...uniqueNewRobots];
+        });
+
+        toast({
+          title: "Robots Found",
+          description: `Found ${newRobots.length} robot(s)`,
+        });
+      } else {
+        toast({
+          title: "No Robots Found",
+          description: "No compatible devices detected",
+        });
+      }
+    } catch (error) {
+      console.error("Failed to find robots:", error);
+      toast({
+        title: "Connection Error",
+        description: "Failed to find robots. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsConnecting(false);
+    }
   };
 
   const handleUpdateRobot = (updatedRobot: RobotConnection) => {
+    // Save device info to unified storage
+    if (updatedRobot.serialNumber && updatedRobot.robotId) {
+      const deviceInfo: DeviceInfo = {
+        serialNumber: updatedRobot.serialNumber,
+        robotType: updatedRobot.robotType || "so100_follower",
+        robotId: updatedRobot.robotId,
+        usbMetadata: updatedRobot.usbMetadata
+          ? {
+              vendorId: parseInt(updatedRobot.usbMetadata.vendorId || "0", 16),
+              productId: parseInt(
+                updatedRobot.usbMetadata.productId || "0",
+                16
+              ),
+              serialNumber: updatedRobot.usbMetadata.serialNumber,
+              manufacturer: updatedRobot.usbMetadata.manufacturerName,
+              product: updatedRobot.usbMetadata.productName,
+            }
+          : undefined,
+      };
+      saveDeviceInfo(updatedRobot.serialNumber, deviceInfo);
+    }
+
     setRobots((prev) =>
-      prev.map((r) => (r.robotId === updatedRobot.robotId ? updatedRobot : r))
+      prev.map((r) =>
+        r.serialNumber === updatedRobot.serialNumber ? updatedRobot : r
+      )
     );
     setEditingRobot(null);
   };
 
   const handleRemoveRobot = (robotId: string) => {
+    const robot = robots.find((r) => r.robotId === robotId);
+    if (robot?.serialNumber) {
+      removeRobotData(robot.serialNumber);
+    }
+
     setRobots((prev) => prev.filter((r) => r.robotId !== robotId));
+
+    toast({
+      title: "Robot Removed",
+      description: `${robotId} has been removed from the registry`,
+    });
   };
 
   const handleCalibrate = (robot: RobotConnection) => {
+    if (!robot.isConnected) {
+      toast({
+        title: "Robot Not Connected",
+        description: "Please connect the robot before calibrating",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setSelectedRobot(robot);
     setView("calibrating");
   };
 
   const handleTeleoperate = (robot: RobotConnection) => {
+    if (!robot.isConnected) {
+      toast({
+        title: "Robot Not Connected",
+        description: "Please connect the robot before teleoperating",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setSelectedRobot(robot);
     setView("teleoperating");
   };
@@ -139,13 +300,6 @@ function App() {
   };
 
   const PageHeader = () => {
-    let title = "DASHBOARD";
-    if (view === "calibrating" && selectedRobot) {
-      title = `CALIBRATE: ${selectedRobot.name.toUpperCase()}`;
-    } else if (view === "teleoperating" && selectedRobot) {
-      title = `TELEOPERATE: ${selectedRobot.name.toUpperCase()}`;
-    }
-
     return (
       <div className="flex items-center justify-between mb-12">
         <div className="flex items-center gap-4">
@@ -157,9 +311,9 @@ function App() {
                 </span>{" "}
                 <span
                   className="text-primary text-glitch uppercase"
-                  data-text={selectedRobot.name}
+                  data-text={selectedRobot.robotId}
                 >
-                  {selectedRobot.name.toUpperCase()}
+                  {selectedRobot.robotId?.toUpperCase()}
                 </span>
               </h1>
             ) : view === "teleoperating" && selectedRobot ? (
@@ -169,9 +323,9 @@ function App() {
                 </span>{" "}
                 <span
                   className="text-primary text-glitch uppercase"
-                  data-text={selectedRobot.name}
+                  data-text={selectedRobot.robotId}
                 >
-                  {selectedRobot.name.toUpperCase()}
+                  {selectedRobot.robotId?.toUpperCase()}
                 </span>
               </h1>
             ) : (
@@ -202,7 +356,7 @@ function App() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen font-sans scanline-overlay">
+    <div className="flex flex-col min-h-screen font-sans">
       <Header />
       <main className="flex-grow container mx-auto py-12 px-4 md:px-6">
         <PageHeader />
@@ -215,6 +369,7 @@ function App() {
         />
       </main>
       <Footer />
+      <Toaster />
     </div>
   );
 }

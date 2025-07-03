@@ -1,22 +1,29 @@
-"use client"
+"use client";
 
-import { Settings, Gamepad2, Trash2, Pencil, Plus, ExternalLink } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Card, CardFooter } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { cn } from "@/lib/utils"
-import HudCorners from "@/components/hud-corners"
-import type { RobotConnection } from "@/types/robot"
+import {
+  Settings,
+  Gamepad2,
+  Trash2,
+  Pencil,
+  Plus,
+  ExternalLink,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardFooter } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+import HudCorners from "@/components/hud-corners";
+import type { RobotConnection } from "@/types/robot";
 
 interface DeviceDashboardProps {
-  robots: RobotConnection[]
-  onCalibrate: (robot: RobotConnection) => void
-  onTeleoperate: (robot: RobotConnection) => void
-  onRemove: (robotId: string) => void
-  onEdit: (robot: RobotConnection) => void
-  onFindNew: () => void
-  isConnecting: boolean
-  onScrollToHardware: () => void
+  robots: RobotConnection[];
+  onCalibrate: (robot: RobotConnection) => void;
+  onTeleoperate: (robot: RobotConnection) => void;
+  onRemove: (robotId: string) => void;
+  onEdit: (robot: RobotConnection) => void;
+  onFindNew: () => void;
+  isConnecting: boolean;
+  onScrollToHardware: () => void;
 }
 
 export function DeviceDashboard({
@@ -35,9 +42,13 @@ export function DeviceDashboard({
         <div className="flex items-center gap-4">
           <div className="w-1 h-8 bg-primary"></div>
           <div>
-            <h3 className="text-xl font-bold text-foreground font-mono tracking-wider uppercase">device registry</h3>
+            <h3 className="text-xl font-bold text-foreground font-mono tracking-wider uppercase">
+              device registry
+            </h3>
             <div className="flex items-center gap-2 mt-1">
-              <span className="text-xs text-muted-foreground font-mono">currently supports SO-100 </span>
+              <span className="text-xs text-muted-foreground font-mono">
+                currently supports SO-100{" "}
+              </span>
               <button
                 onClick={onScrollToHardware}
                 className="text-xs text-primary hover:text-accent transition-colors underline font-mono flex items-center gap-1"
@@ -49,7 +60,12 @@ export function DeviceDashboard({
           </div>
         </div>
         {robots.length > 0 && (
-          <Button onClick={onFindNew} disabled={isConnecting} size="lg" className="font-mono uppercase">
+          <Button
+            onClick={onFindNew}
+            disabled={isConnecting}
+            size="lg"
+            className="font-mono uppercase"
+          >
             <Plus className="w-4 h-4 mr-2" />
             add unit
           </Button>
@@ -67,17 +83,27 @@ export function DeviceDashboard({
                       <div className="w-16 h-16 mx-auto mb-4 border-2 border-primary/50 rounded-lg flex items-center justify-center animate-pulse">
                         <Plus className="w-8 h-8 text-primary animate-spin" />
                       </div>
-                      <h4 className="text-xl text-primary mb-2 tracking-wider uppercase">scanning for units</h4>
-                      <p className="text-sm text-muted-foreground mb-8">searching for available devices...</p>
+                      <h4 className="text-xl text-primary mb-2 tracking-wider uppercase">
+                        scanning for units
+                      </h4>
+                      <p className="text-sm text-muted-foreground mb-8">
+                        searching for available devices...
+                      </p>
                     </>
                   ) : (
                     <>
                       <div className="w-16 h-16 mx-auto mb-4 border-2 border-dashed border-primary/50 rounded-lg flex items-center justify-center">
                         <Plus className="w-8 h-8 text-primary/50" />
                       </div>
-                      <h4 className="text-xl text-primary mb-2 tracking-wider uppercase">no units detected</h4>
+                      <h4 className="text-xl text-primary mb-2 tracking-wider uppercase">
+                        no units detected
+                      </h4>
 
-                      <Button onClick={onFindNew} size="lg" className="font-mono uppercase">
+                      <Button
+                        onClick={onFindNew}
+                        size="lg"
+                        className="font-mono uppercase"
+                      >
                         <Plus className="w-4 h-4 mr-2" />
                         add unit
                       </Button>
@@ -95,18 +121,26 @@ export function DeviceDashboard({
                   <div className="p-4 border-b border-white/10">
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex-1">
-                        <h4 className="text-xl font-bold text-primary font-mono tracking-wider">{robot.name}</h4>
+                        <h4 className="text-xl font-bold text-primary font-mono tracking-wider">
+                          {robot.name}
+                        </h4>
                         <div className="flex items-center gap-2 mt-1">
-                          <span className="text-xs text-muted-foreground font-mono">{robot.serialNumber}</span>
-                          <span className="text-xs text-muted-foreground">•</span>
-                          <span className="text-xs font-mono uppercase text-muted-foreground">{robot.robotType}</span>
+                          <span className="text-xs text-muted-foreground font-mono">
+                            {robot.serialNumber}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            •
+                          </span>
+                          <span className="text-xs font-mono uppercase text-muted-foreground">
+                            {robot.robotType}
+                          </span>
                         </div>
                       </div>
                       <Badge
                         variant="outline"
                         className={cn(
                           "border-primary/50 bg-primary/20 text-primary font-mono text-xs",
-                          robot.isConnected && "animate-pulse-slow",
+                          robot.isConnected && "animate-pulse-slow"
                         )}
                       >
                         {robot.isConnected ? "ONLINE" : "OFFLINE"}
@@ -117,14 +151,20 @@ export function DeviceDashboard({
                   <div className="flex-grow p-4">
                     <div className="grid grid-cols-2 gap-4 text-xs font-mono">
                       <div>
-                        <span className="text-muted-foreground uppercase">status:</span>
+                        <span className="text-muted-foreground uppercase">
+                          status:
+                        </span>
                         <div className="text-primary uppercase">
                           {robot.isConnected ? "operational" : "disconnected"}
                         </div>
                       </div>
                       <div>
-                        <span className="text-muted-foreground uppercase">type:</span>
-                        <div className="text-accent uppercase">{robot.robotType}</div>
+                        <span className="text-muted-foreground uppercase">
+                          type:
+                        </span>
+                        <div className="text-accent uppercase">
+                          {robot.robotType}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -157,7 +197,11 @@ export function DeviceDashboard({
                     <Button
                       variant="destructive"
                       size="sm"
-                      onClick={() => onRemove(robot.robotId)}
+                      onClick={() =>
+                        onRemove(
+                          robot.robotId || robot.serialNumber || "unknown"
+                        )
+                      }
                       className="font-mono text-xs uppercase"
                     >
                       <Trash2 className="w-3 h-3 mr-1" /> remove
@@ -170,5 +214,5 @@ export function DeviceDashboard({
         )}
       </div>
     </Card>
-  )
+  );
 }
