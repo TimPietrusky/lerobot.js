@@ -29,10 +29,12 @@ jobs:
 
       - name: Update cyberpunk dependency to use published version
         run: |
+          # Get the actual version from packages/web/package.json
+          WEB_VERSION=$(node -p "require('./packages/web/package.json').version")
           cd examples/cyberpunk-standalone
           # Replace workspace dependency with published version
-          sed -i 's/"@lerobot\/web": "workspace:\*"/"@lerobot\/web": "^0.1.1"/' package.json
-          echo "Updated cyberpunk package.json to use published version"
+          sed -i 's/"@lerobot\/web": "workspace:\*"/"@lerobot\/web": "^'$WEB_VERSION'"/' package.json
+          echo "Updated cyberpunk package.json to use published version ^$WEB_VERSION"
 
       - name: Prepare README for HF Space
         run: |
