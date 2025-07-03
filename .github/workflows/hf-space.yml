@@ -27,18 +27,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build web package
-        run: pnpm --filter "@lerobot/web" run build
-
-      - name: Pack web package and update cyberpunk dependency
+      - name: Update cyberpunk dependency to use published version
         run: |
-          cd packages/web
-          npm pack
-          WEB_VERSION=$(node -p "require('./package.json').version")
-          cd ../../examples/cyberpunk-standalone
-          # Replace workspace dependency with actual version
-          sed -i 's/"@lerobot\/web": "workspace:\*"/"@lerobot\/web": "file:..\/..\/packages\/web\/lerobot-web-'$WEB_VERSION'.tgz"/' package.json
-          echo "Updated cyberpunk package.json to use packed version"
+          cd examples/cyberpunk-standalone
+          # Replace workspace dependency with published version
+          sed -i 's/"@lerobot\/web": "workspace:\*"/"@lerobot\/web": "^0.1.1"/' package.json
+          echo "Updated cyberpunk package.json to use published version"
 
       - name: Prepare README for HF Space
         run: |
@@ -55,7 +49,7 @@ jobs:
 
       - name: Commit HF Space changes
         run: |
-          git add README.md examples/cyberpunk-standalone/package.json packages/web/lerobot-web-*.tgz
+          git add README.md examples/cyberpunk-standalone/package.json
           git commit -m "Add HF Space frontmatter and update cyberpunk dependency for deployment" || echo "No changes to commit"
 
       - name: Push to hub
