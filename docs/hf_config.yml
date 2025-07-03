@@ -5,7 +5,7 @@ colorFrom: purple
 colorTo: pink
 sdk: static
 license: apache-2.0
-build: "cd examples/cyberpunk-standalone && pnpm install --ignore-workspace && pnpm build"
+build: "cd examples/cyberpunk-standalone && npm install && npm run build"
 app_file: examples/cyberpunk-standalone/dist/index.html
 pinned: true
 ---
