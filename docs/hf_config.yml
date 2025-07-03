@@ -5,7 +5,7 @@ colorFrom: purple
 colorTo: pink
 sdk: static
 license: apache-2.0
-app_build_command: "cd examples/cyberpunk-standalone && npm install --legacy-peer-deps && npm run build"
+app_build_command: "npm install --legacy-peer-deps --prefix examples/cyberpunk-standalone && npm run build --prefix examples/cyberpunk-standalone"
 app_file: examples/cyberpunk-standalone/dist/index.html
 pinned: true
 ---
