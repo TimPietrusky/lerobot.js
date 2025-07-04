@@ -1,6 +1,6 @@
 "use client";
 
-import { Cpu, Mail, Plus, ExternalLink } from "lucide-react";
+import { Cpu, MessageCircle, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import HudCorners from "@/components/hud-corners";
 
@@ -17,7 +17,7 @@ export function HardwareSupportSection() {
   return (
     <div className="font-mono">
       <div className="mb-6">
-        <h2 className="text-2xl font-bold text-primary tracking-wider mb-2 uppercase flex items-center gap-3">
+        <h2 className="text-3xl font-bold tracking-wider mb-2 uppercase flex items-center gap-3">
           <Cpu className="w-6 h-6" />
           Hardware Support
         </h2>
@@ -88,7 +88,8 @@ export function HardwareSupportSection() {
               <div>
                 <p className="text-muted-foreground mb-4">
                   please provide us with access to different robot hardware, so
-                  we can add them to lerobot.js
+                  we can add them to lerobot.js. join the LeRobot Discord and DM
+                  me!
                 </p>
 
                 <div className="bg-muted/60 dark:bg-black/40 border border-border dark:border-white/10 rounded-lg p-4 mb-4">
@@ -104,30 +105,16 @@ export function HardwareSupportSection() {
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-4">
-                  <Button
-                    className="font-mono uppercase flex items-center gap-2"
-                    onClick={() =>
-                      window.open(
-                        "mailto:tim@nerddisco.com?subject=LeRobot.js Hardware Support",
-                        "_blank"
-                      )
-                    }
-                  >
-                    <Mail className="w-4 h-4" />
-                    Contact Tim
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="font-mono uppercase flex items-center gap-2 bg-transparent"
-                    onClick={() =>
-                      window.open(
-                        "https://github.com/timpietrusky/lerobot.js",
-                        "_blank"
-                      )
-                    }
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                    GitHub
+                  <Button asChild className="font-mono">
+                    <a
+                      href="https://discord.gg/s3KuuzsPFb"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2"
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                      LeRobot Discord → dm @NERDDISCO
+                    </a>
                   </Button>
                 </div>
               </div>

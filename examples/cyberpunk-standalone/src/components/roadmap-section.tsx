@@ -1,12 +1,12 @@
-"use client"
-import { CheckCircle, Clock, Target } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
-import { cn } from "@/lib/utils"
+"use client";
+import { CheckCircle, Clock, Target, Github } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 interface RoadmapItem {
-  title: string
-  description: string
-  status: "completed" | "planned"
+  title: string;
+  description: string;
+  status: "completed" | "planned";
 }
 
 const roadmapItems: RoadmapItem[] = [
@@ -17,7 +17,8 @@ const roadmapItems: RoadmapItem[] = [
   },
   {
     title: "calibrate",
-    description: "Real-time joint calibration with visual feedback and data export",
+    description:
+      "Real-time joint calibration with visual feedback and data export",
     status: "completed",
   },
   {
@@ -32,7 +33,8 @@ const roadmapItems: RoadmapItem[] = [
   },
   {
     title: "replay",
-    description: "Replay any recorded episode or episodes from existing datasets",
+    description:
+      "Replay any recorded episode or episodes from existing datasets",
     status: "planned",
   },
   {
@@ -42,10 +44,11 @@ const roadmapItems: RoadmapItem[] = [
   },
   {
     title: "eval",
-    description: "Run inference using trained policies for autonomous operation",
+    description:
+      "Run inference using trained policies for autonomous operation",
     status: "planned",
   },
-]
+];
 
 const statusConfig = {
   completed: {
@@ -64,20 +67,33 @@ const statusConfig = {
     bgColor: "bg-slate-500/10 dark:bg-muted-foreground/5",
     borderColor: "border-slate-500/30 dark:border-muted-foreground/20",
   },
-}
+};
 
 export function RoadmapSection() {
-  const completedCount = roadmapItems.filter((item) => item.status === "completed").length
-  const totalCount = roadmapItems.length
+  const completedCount = roadmapItems.filter(
+    (item) => item.status === "completed"
+  ).length;
+  const totalCount = roadmapItems.length;
 
   return (
     <div className="font-mono">
       <div className="mb-6">
-        <h2 className="text-2xl font-bold text-primary tracking-wider mb-2 uppercase flex items-center gap-3">
+        <h2 className="text-3xl font-bold tracking-wider mb-2 uppercase flex items-center gap-3">
           <Target className="w-6 h-6" />
           Roadmap
         </h2>
-        <p className="text-sm text-muted-foreground">lfg o7</p>
+        <p className="text-sm text-muted-foreground">
+          our goal is to provide{" "}
+          <a
+            href="https://huggingface.co/docs/lerobot"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary hover:text-accent transition-colors underline"
+          >
+            LeRobot
+          </a>
+          's simple, easy-to-use Python functions for the JavaScript community
+        </p>
       </div>
 
       <div className="bg-gradient-to-br from-muted/60 to-muted/40 dark:from-black/40 dark:to-black/20 border border-primary/20 rounded-lg overflow-hidden">
@@ -85,13 +101,14 @@ export function RoadmapSection() {
         <div className="bg-primary/30 dark:bg-primary/10 border-b border-primary/20 p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="text-primary font-bold text-lg tracking-wider">SYSTEM OBJECTIVES</div>
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-green-500 dark:bg-green-400 rounded-full animate-pulse"></div>
-                <span className="text-green-600 dark:text-green-400 text-sm">{completedCount} ACTIVE</span>
+                <span className="text-green-600 dark:text-green-400 text-xs">
+                  {completedCount} COMPLETED
+                </span>
                 <div className="w-2 h-2 bg-slate-500 dark:bg-muted-foreground rounded-full"></div>
-                <span className="text-slate-600 dark:text-muted-foreground text-sm">
-                  {totalCount - completedCount} QUEUED
+                <span className="text-slate-600 dark:text-muted-foreground text-xs">
+                  {totalCount - completedCount} PLANNED
                 </span>
               </div>
             </div>
@@ -115,8 +132,8 @@ export function RoadmapSection() {
         <div className="p-6">
           <div className="space-y-3">
             {roadmapItems.map((item, index) => {
-              const config = statusConfig[item.status]
-              const StatusIcon = config.icon
+              const config = statusConfig[item.status];
+              const StatusIcon = config.icon;
 
               return (
                 <div
@@ -124,7 +141,7 @@ export function RoadmapSection() {
                   className={cn(
                     "flex items-center gap-4 p-4 rounded border transition-all hover:bg-muted/30 dark:hover:bg-white/5",
                     config.bgColor,
-                    config.borderColor,
+                    config.borderColor
                   )}
                 >
                   {/* Number */}
@@ -134,8 +151,12 @@ export function RoadmapSection() {
 
                   {/* Content */}
                   <div className="flex-1 min-w-0">
-                    <h4 className={cn("font-bold text-lg", config.textColor)}>{item.title}()</h4>
-                    <p className="text-muted-foreground text-sm mt-1">{item.description}</p>
+                    <h4 className={cn("font-bold text-lg", config.textColor)}>
+                      {item.title}()
+                    </h4>
+                    <p className="text-muted-foreground text-sm mt-1">
+                      {item.description}
+                    </p>
                   </div>
 
                   {/* Status Badge */}
@@ -144,36 +165,41 @@ export function RoadmapSection() {
                     className={cn(
                       "text-xs font-bold tracking-wider border-0 px-3 py-1 flex-shrink-0",
                       config.textColor,
-                      config.bgColor,
+                      config.bgColor
                     )}
                   >
                     {config.label}
                   </Badge>
 
                   {/* Status Icon */}
-                  <StatusIcon className={cn("w-4 h-4 flex-shrink-0 ml-3", config.textColor)} />
+                  <StatusIcon
+                    className={cn(
+                      "w-4 h-4 flex-shrink-0 ml-3",
+                      config.textColor
+                    )}
+                  />
                 </div>
-              )
+              );
             })}
           </div>
         </div>
 
         {/* Footer */}
-        <div className="bg-muted/50 dark:bg-black/30 border-t border-border dark:border-white/10 p-4">
+        <div className="bg-muted/50 dark:bg-black/30 border-t border-gray-300 dark:border-white/10 p-4">
           <p className="text-muted-foreground text-sm">
-            <span className="text-cyan-600 dark:text-accent-cyan">REFERENCE:</span> functions based on the original{" "}
+            want to help? LeRobot.js is open source on{" "}
             <a
-              href="https://huggingface.co/docs/lerobot"
+              href="https://github.com/lerobot/lerobot.js"
               target="_blank"
               rel="noopener noreferrer"
               className="text-primary hover:text-accent transition-colors underline"
             >
-              LeRobot
-            </a>{" "}
-            (python) and adapted for web robotic ai
+              <Github className="h-4 w-4 inline align-text-bottom mr-1" />
+              GitHub
+            </a>
           </p>
         </div>
       </div>
     </div>
-  )
+  );
 }

@@ -1,40 +1,48 @@
-"use client"
-import { useState } from "react"
-import { Copy, Package, Clock, Check, Terminal } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import HudCorners from "@/components/hud-corners"
-import { cn } from "@/lib/utils"
+"use client";
+import { useState } from "react";
+import { Copy, Package, Clock, Check, Terminal } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import HudCorners from "@/components/hud-corners";
+import { cn } from "@/lib/utils";
 
-type PackageManager = "npm" | "yarn" | "pnpm" | "bun"
+type PackageManager = "npm" | "yarn" | "pnpm" | "bun";
 
 interface PackageInstallerProps {
-  packageName: string
-  disabled?: boolean
+  packageName: string;
+  disabled?: boolean;
 }
 
-function PackageInstaller({ packageName, disabled = false }: PackageInstallerProps) {
-  const [selectedPM, setSelectedPM] = useState<PackageManager>("pnpm")
-  const [copied, setCopied] = useState(false)
+function PackageInstaller({
+  packageName,
+  disabled = false,
+}: PackageInstallerProps) {
+  const [selectedPM, setSelectedPM] = useState<PackageManager>("pnpm");
+  const [copied, setCopied] = useState(false);
 
-  const packageManagers: { value: PackageManager; label: string; command: string }[] = [
+  const packageManagers: {
+    value: PackageManager;
+    label: string;
+    command: string;
+  }[] = [
     { value: "pnpm", label: "pnpm", command: `pnpm add ${packageName}` },
     { value: "npm", label: "npm", command: `npm i ${packageName}` },
     { value: "yarn", label: "yarn", command: `yarn add ${packageName}` },
-  ]
+  ];
 
   const copyToClipboard = async (text: string) => {
     try {
-      await navigator.clipboard.writeText(text)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      console.error("Failed to copy:", err)
+      console.error("Failed to copy:", err);
     }
-  }
+  };
 
-  const currentCommand = packageManagers.find((pm) => pm.value === selectedPM)?.command || ""
+  const currentCommand =
+    packageManagers.find((pm) => pm.value === selectedPM)?.command || "";
 
   return (
     <div className="max-w-md">
@@ -51,7 +59,7 @@ function PackageInstaller({ packageName, disabled = false }: PackageInstallerPro
                 "font-mono text-xs px-3 min-w-[60px] h-8 border transition-colors",
                 selectedPM === pm.value
                   ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-transparent border-input hover:bg-accent hover:text-accent-foreground",
+                  : "bg-transparent border-input hover:bg-accent hover:text-accent-foreground"
               )}
             >
               {pm.label}
@@ -65,7 +73,7 @@ function PackageInstaller({ packageName, disabled = false }: PackageInstallerPro
               "border rounded-md p-3 font-mono text-sm transition-colors",
               disabled
                 ? "bg-muted/60 dark:bg-black/20 border-dashed border-muted/40 dark:border-muted/20 text-muted-foreground/70 dark:text-muted-foreground/50"
-                : "bg-muted/60 dark:bg-black/40 border-border dark:border-white/10 text-foreground dark:text-primary",
+                : "bg-muted/60 dark:bg-black/40 border-border dark:border-white/10 text-foreground dark:text-primary"
             )}
           >
             {currentCommand}
@@ -88,7 +96,7 @@ function PackageInstaller({ packageName, disabled = false }: PackageInstallerPro
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 export function SetupCards() {
@@ -105,8 +113,12 @@ export function SetupCards() {
                 <Package className="w-6 h-6 text-primary" />
               </div>
               <div>
-                <h3 className="text-xl font-bold text-primary font-mono tracking-wider uppercase">web</h3>
-                <p className="text-sm text-muted-foreground font-mono">run lerobot in the browser</p>
+                <h3 className="text-xl font-bold text-primary font-mono tracking-wider uppercase">
+                  web
+                </h3>
+                <p className="text-sm text-muted-foreground font-mono">
+                  run LeRobot.js in the browser
+                </p>
               </div>
             </div>
 
@@ -128,8 +140,12 @@ export function SetupCards() {
                   <Terminal className="w-6 h-6 text-muted-foreground" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold text-muted-foreground font-mono tracking-wider uppercase">node</h3>
-                  <p className="text-sm text-muted-foreground/70 font-mono">run lerobot on the server</p>
+                  <h3 className="text-xl font-bold text-muted-foreground font-mono tracking-wider uppercase">
+                    node
+                  </h3>
+                  <p className="text-sm text-muted-foreground/70 font-mono">
+                    run LeRobot.js on the server
+                  </p>
                 </div>
               </div>
               <Badge
@@ -156,5 +172,5 @@ export function SetupCards() {
         </Card>
       </HudCorners>
     </div>
-  )
+  );
 }

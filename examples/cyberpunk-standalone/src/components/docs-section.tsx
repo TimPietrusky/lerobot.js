@@ -30,7 +30,7 @@ const CodeBlock = ({
     typeof children === "string" ? children : children?.toString() || "";
 
   return (
-    <div className="bg-muted/50 dark:bg-black/40 border border-border dark:border-white/10 rounded-md overflow-hidden my-4 relative">
+    <div className="bg-slate-800 dark:bg-black/40 border border-border dark:border-white/10 rounded-md overflow-hidden my-4 relative">
       <SyntaxHighlighter
         language={language}
         style={oneDark}
@@ -40,6 +40,8 @@ const CodeBlock = ({
           fontSize: "0.875rem",
           background: "transparent",
           backgroundColor: "transparent",
+          fontFamily:
+            "Geist Mono, ui-monospace, SFMono-Regular, 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace",
         }}
         wrapLines={true}
         wrapLongLines={true}
@@ -68,16 +70,36 @@ export function DocsSection() {
   return (
     <div className="font-mono">
       <div className="mb-6">
-        <h2 className="text-2xl font-bold text-primary tracking-wider mb-2 uppercase flex items-center gap-3">
+        <h2 className="text-3xl font-bold tracking-wider mb-2 uppercase flex items-center gap-3">
           <Book className="w-6 h-6" />
           Docs
         </h2>
         <p className="text-sm text-muted-foreground">
-          Complete API reference for @lerobot/web robotics library.
+          Complete API reference for @lerobot/web
         </p>
       </div>
 
-      <div className="bg-muted/40 dark:bg-black/30 border-l-4 border-cyan-500 dark:border-accent-cyan p-6 md:p-8 rounded-r-lg space-y-8">
+      <div className="bg-muted/40 dark:bg-black/30 border border-border dark:border-white/10 p-6 md:p-8 rounded-lg space-y-14">
+        {/* Browser Requirements */}
+        <div>
+          <h3 className="text-xl font-bold text-cyan-600 dark:text-accent-cyan tracking-wider uppercase">
+            Browser Requirements
+          </h3>
+          <div className="mt-4 space-y-2 text-sm">
+            <div>
+              • <strong>Chromium 89+</strong> with WebSerial and WebUSB API
+              support
+            </div>
+            <div>
+              • <strong>HTTPS or localhost</strong>
+            </div>
+            <div>
+              • <strong>User gesture</strong> required for initial port
+              selection
+            </div>
+          </div>
+        </div>
+
         {/* Getting Started */}
         <div>
           <h3 className="text-xl font-bold text-cyan-600 dark:text-accent-cyan tracking-wider uppercase flex items-center gap-2">
@@ -115,28 +137,11 @@ const teleop = await teleoperate({
   calibrationData,
   teleop: { type: "keyboard" },
 });
-teleop.start();`}
-          </CodeBlock>
-        </div>
+teleop.start();
 
-        {/* Browser Requirements */}
-        <div>
-          <h3 className="text-xl font-bold text-cyan-600 dark:text-accent-cyan tracking-wider uppercase">
-            Browser Requirements
-          </h3>
-          <div className="mt-4 space-y-2 text-sm">
-            <div>
-              • <strong>Chromium 89+</strong> with WebSerial and WebUSB API
-              support
-            </div>
-            <div>
-              • <strong>HTTPS or localhost</strong>
-            </div>
-            <div>
-              • <strong>User gesture</strong> required for initial port
-              selection
-            </div>
-          </div>
+// 5. stop control (run this when you're done)
+teleop.stop();`}
+          </CodeBlock>
         </div>
 
         {/* API Reference */}
@@ -145,7 +150,7 @@ teleop.start();`}
             <Code2 className="w-5 h-5" />
             API Reference
           </h3>
-          <div className="space-y-6 mt-4">
+          <div className="space-y-12 mt-4">
             {/* findPort */}
             <div>
               <h4 className="font-bold text-primary">findPort(config?)</h4>
@@ -163,14 +168,40 @@ const findProcess = await findPort({
     { robotType: "so100_follower", robotId: "left_arm", serialNumber: "USB123" }
   ],
   onMessage: (msg) => console.log(msg),
-});
-
-// Returns: FindPortProcess
-{
-  result: Promise<RobotConnection[]>, // Array of robot connections
-  stop(): void // Cancel discovery process
-}`}
+});`}
               </CodeBlock>
+              <div className="mt-3">
+                <h5 className="font-bold text-sm text-muted-foreground tracking-wider">
+                  Options
+                </h5>
+                <ul className="mt-1 ml-4 space-y-1 text-sm text-muted-foreground">
+                  <li>
+                    • <code>robotConfigs?: RobotConfig[]</code> - Auto-connect
+                    to these known robots
+                  </li>
+                  <li>
+                    • <code>onMessage?: (message: string) =&gt; void</code> -
+                    Progress messages callback
+                  </li>
+                </ul>
+              </div>
+              <div className="mt-3">
+                <h5 className="font-bold text-sm text-muted-foreground tracking-wider">
+                  Returns:{" "}
+                  <code className="bg-muted/50 px-1 rounded">
+                    FindPortProcess
+                  </code>
+                </h5>
+                <ul className="mt-1 ml-4 space-y-1 text-sm text-muted-foreground">
+                  <li>
+                    • <code>result: Promise&lt;RobotConnection[]&gt;</code> -
+                    Array of robot connections
+                  </li>
+                  <li>
+                    • <code>stop(): void</code> - Cancel discovery process
+                  </li>
+                </ul>
+              </div>
             </div>
 
             {/* calibrate */}
@@ -195,14 +226,25 @@ const findProcess = await findPort({
 
 // Move robot through full range of motion...
 calibrationProcess.stop(); // Stop range recording
-const calibrationData = await calibrationProcess.result;
-
-// Returns: CalibrationProcess
-{
-  result: Promise<WebCalibrationResults>, // Python-compatible format
-  stop(): void // Stop calibration process
-}`}
+const calibrationData = await calibrationProcess.result;`}
               </CodeBlock>
+              <div className="mt-3">
+                <h5 className="font-bold text-sm text-muted-foreground tracking-wider">
+                  Returns:{" "}
+                  <code className="bg-muted/50 px-1 rounded">
+                    CalibrationProcess
+                  </code>
+                </h5>
+                <ul className="mt-1 ml-4 space-y-1 text-sm text-muted-foreground">
+                  <li>
+                    • <code>result: Promise&lt;WebCalibrationResults&gt;</code>{" "}
+                    - Python-compatible format
+                  </li>
+                  <li>
+                    • <code>stop(): void</code> - Stop calibration process
+                  </li>
+                </ul>
+              </div>
             </div>
 
             {/* teleoperate */}
@@ -228,17 +270,37 @@ const directTeleop = await teleoperate({
   robot,
   calibrationData: savedCalibrationData,
   teleop: { type: "direct" },
-});
-
-// Returns: TeleoperationProcess
-{
-  start(): void, // Begin teleoperation
-  stop(): void, // Stop teleoperation and clear states
-  getState(): TeleoperationState, // Current state and motor positions
-  teleoperator: BaseWebTeleoperator, // Access teleoperator-specific methods
-  disconnect(): Promise<void> // Stop and disconnect
-}`}
+});`}
               </CodeBlock>
+              <div className="mt-3">
+                <h5 className="font-bold text-sm text-muted-foreground tracking-wider">
+                  Returns:{" "}
+                  <code className="bg-muted/50 px-1 rounded">
+                    TeleoperationProcess
+                  </code>
+                </h5>
+                <ul className="mt-1 ml-4 space-y-1 text-sm text-muted-foreground">
+                  <li>
+                    • <code>start(): void</code> - Begin teleoperation
+                  </li>
+                  <li>
+                    • <code>stop(): void</code> - Stop teleoperation and clear
+                    states
+                  </li>
+                  <li>
+                    • <code>getState(): TeleoperationState</code> - Current
+                    state and motor positions
+                  </li>
+                  <li>
+                    • <code>teleoperator: BaseWebTeleoperator</code> - Access
+                    teleoperator-specific methods
+                  </li>
+                  <li>
+                    • <code>disconnect(): Promise&lt;void&gt;</code> - Stop and
+                    disconnect
+                  </li>
+                </ul>
+              </div>
             </div>
 
             {/* releaseMotors */}
@@ -254,12 +316,22 @@ const directTeleop = await teleoperate({
 await releaseMotors(robot);
 
 // Release specific motors only
-await releaseMotors(robot, [1, 2, 3]);
-
-// Parameters
-robot: RobotConnection // Connected robot
-motorIds?: number[] // Specific motor IDs (default: all motors for robot type)`}
+await releaseMotors(robot, [1, 2, 3]);`}
               </CodeBlock>
+              <div className="mt-3">
+                <h5 className="font-bold text-sm text-muted-foreground tracking-wider">
+                  Parameters
+                </h5>
+                <ul className="mt-1 ml-4 space-y-1 text-sm text-muted-foreground">
+                  <li>
+                    • <code>robot: RobotConnection</code> - Connected robot
+                  </li>
+                  <li>
+                    • <code>motorIds?: number[]</code> - Specific motor IDs
+                    (default: all motors for robot type)
+                  </li>
+                </ul>
+              </div>
             </div>
           </div>
         </div>

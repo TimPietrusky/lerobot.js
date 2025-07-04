@@ -1,8 +1,8 @@
-import { Github } from "lucide-react"
+import { Github } from "lucide-react";
 
 export function Footer() {
   return (
-    <footer className="w-full border-t">
+    <footer className="w-full border-t border-gray-300 dark:border-border">
       <div className="container mx-auto flex h-16 items-center justify-center px-4 md:px-6">
         <div className="flex items-center gap-4 text-sm text-muted-foreground">
           <span>
@@ -37,5 +37,5 @@ export function Footer() {
         </div>
       </div>
     </footer>
-  )
+  );
 }

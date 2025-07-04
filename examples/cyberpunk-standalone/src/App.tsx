@@ -267,7 +267,7 @@ function App() {
       case "dashboard":
       default:
         return (
-          <div className="space-y-12">
+          <div className="space-y-20">
             <DeviceDashboard
               robots={robots}
               onCalibrate={handleCalibrate}
@@ -280,7 +280,7 @@ function App() {
             />
             <div>
               <div className="mb-6">
-                <h2 className="text-2xl font-bold text-primary font-mono tracking-wider mb-2 uppercase">
+                <h2 className="text-3xl font-bold font-mono tracking-wider mb-2 uppercase">
                   install
                 </h2>
                 <p className="text-sm text-muted-foreground font-mono">
@@ -356,7 +356,7 @@ function App() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen font-sans">
+    <div className="flex flex-col min-h-screen font-sans bg-gray-200 dark:bg-background">
       <Header />
       <main className="flex-grow container mx-auto py-12 px-4 md:px-6">
         <PageHeader />

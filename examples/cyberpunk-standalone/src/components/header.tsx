@@ -1,8 +1,8 @@
-import { ThemeToggle } from "./theme-toggle"
+import { ThemeToggle } from "./theme-toggle";
 
 export function Header() {
   return (
-    <header className="w-full border-b">
+    <header className="w-full border-b border-gray-300 dark:border-border">
       <div className="container mx-auto flex h-16 items-center justify-between px-4 md:px-6">
         <div className="flex items-center gap-6">
           <h1 className="text-2xl font-bold">LeRobot.js</h1>
@@ -23,5 +23,5 @@ export function Header() {
         <ThemeToggle />
       </div>
     </header>
-  )
+  );
 }
