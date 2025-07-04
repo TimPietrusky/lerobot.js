@@ -1,12 +1,12 @@
 "use client";
-import { CheckCircle, Clock, Target, Github } from "lucide-react";
+import { CheckCircle, Clock, Loader2, Target, Github } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 interface RoadmapItem {
   title: string;
   description: string;
-  status: "completed" | "planned";
+  status: "completed" | "in_progress" | "planned";
 }
 
 const roadmapItems: RoadmapItem[] = [
@@ -25,6 +25,11 @@ const roadmapItems: RoadmapItem[] = [
     title: "teleoperate",
     description: "Manual robot control with keyboard and slider inputs",
     status: "completed",
+  },
+  {
+    title: "SO-100 leader arm",
+    description: "Leader arm teleoperation support for intuitive robot control",
+    status: "in_progress",
   },
   {
     title: "record",
@@ -59,6 +64,14 @@ const statusConfig = {
     bgColor: "bg-green-500/10 dark:bg-green-400/5",
     borderColor: "border-green-500/30 dark:border-green-400/20",
   },
+  in_progress: {
+    icon: Loader2,
+    label: "IN PROGRESS",
+    dotColor: "bg-orange-500 dark:bg-orange-400",
+    textColor: "text-orange-600 dark:text-orange-400",
+    bgColor: "bg-orange-500/10 dark:bg-orange-400/5",
+    borderColor: "border-orange-500/30 dark:border-orange-400/20",
+  },
   planned: {
     icon: Clock,
     label: "PLANNED",
@@ -72,6 +85,9 @@ const statusConfig = {
 export function RoadmapSection() {
   const completedCount = roadmapItems.filter(
     (item) => item.status === "completed"
+  ).length;
+  const inProgressCount = roadmapItems.filter(
+    (item) => item.status === "in_progress"
   ).length;
   const totalCount = roadmapItems.length;
 
@@ -101,15 +117,27 @@ export function RoadmapSection() {
         <div className="bg-primary/30 dark:bg-primary/10 border-b border-primary/20 p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-green-500 dark:bg-green-400 rounded-full animate-pulse"></div>
-                <span className="text-green-600 dark:text-green-400 text-xs">
-                  {completedCount} COMPLETED
-                </span>
-                <div className="w-2 h-2 bg-slate-500 dark:bg-muted-foreground rounded-full"></div>
-                <span className="text-slate-600 dark:text-muted-foreground text-xs">
-                  {totalCount - completedCount} PLANNED
-                </span>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-green-500 dark:bg-green-400 rounded-full"></div>
+                  <span className="text-green-600 dark:text-green-400 text-xs">
+                    {completedCount} COMPLETED
+                  </span>
+                </div>
+                <div className="w-px h-4 bg-border dark:bg-white/10"></div>
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-orange-500 dark:bg-orange-400 rounded-full animate-pulse"></div>
+                  <span className="text-orange-600 dark:text-orange-400 text-xs">
+                    {inProgressCount} IN PROGRESS
+                  </span>
+                </div>
+                <div className="w-px h-4 bg-border dark:bg-white/10"></div>
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-slate-500 dark:bg-muted-foreground rounded-full"></div>
+                  <span className="text-slate-600 dark:text-muted-foreground text-xs">
+                    {totalCount - completedCount - inProgressCount} PLANNED
+                  </span>
+                </div>
               </div>
             </div>
             <div className="text-xs text-muted-foreground">
@@ -152,7 +180,8 @@ export function RoadmapSection() {
                   {/* Content */}
                   <div className="flex-1 min-w-0">
                     <h4 className={cn("font-bold text-lg", config.textColor)}>
-                      {item.title}()
+                      {item.title}
+                      {item.title !== "SO-100 leader arm" ? "()" : ""}
                     </h4>
                     <p className="text-muted-foreground text-sm mt-1">
                       {item.description}
@@ -175,7 +204,8 @@ export function RoadmapSection() {
                   <StatusIcon
                     className={cn(
                       "w-4 h-4 flex-shrink-0 ml-3",
-                      config.textColor
+                      config.textColor,
+                      item.status === "in_progress" && "animate-spin"
                     )}
                   />
                 </div>
