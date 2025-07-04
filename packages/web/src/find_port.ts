@@ -67,9 +67,7 @@ async function requestUSBDeviceMetadata(): Promise<{
 }> {
   try {
     // Request USB device access for metadata (no filters - accept any device)
-    const usbDevice = await navigator.usb.requestDevice({
-      filters: [], // No filtering - let user choose any device
-    });
+    const usbDevice = await navigator.usb.requestDevice({ filters: [] });
 
     const serialNumber =
       usbDevice.serialNumber ||
@@ -178,32 +176,23 @@ async function findPortInteractive(
   onMessage?.("Opening device selection dialogs...");
 
   try {
-    // Step 1: Request both permissions simultaneously to preserve user gesture
-    let serialPortPromise = navigator.serial.requestPort();
-    let usbDevicePromise: Promise<{
-      serialNumber: string;
-      usbMetadata: RobotConnection["usbMetadata"];
-    }> | null = null;
-
-    if (isWebUSBSupported()) {
-      onMessage?.("📱 Requesting device access permissions...");
-      usbDevicePromise = requestUSBDeviceMetadata();
-    }
-
-    // Wait for serial port
-    const port = await serialPortPromise;
-    await port.open({ baudRate: 1000000 });
-
-    const portName = getPortDisplayName(port);
-    onMessage?.(`✅ Connected to ${portName}`);
-
-    // Get USB metadata
     let serialNumber: string;
     let usbMetadata: RobotConnection["usbMetadata"];
 
-    if (usbDevicePromise) {
+    onMessage?.("📱 Requesting device access permissions...");
+
+    // Step 1: Request serial port
+    onMessage?.("📡 Step 1: Select serial port...");
+    const port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 1000000 });
+
+    onMessage?.(`✅ Connected to ${getPortDisplayName(port)}`);
+
+    // Step 2: Request USB device for identification
+    if (isWebUSBSupported()) {
+      onMessage?.("🆔 Step 2: Select device for identification...");
       try {
-        const usbData = await usbDevicePromise;
+        const usbData = await requestUSBDeviceMetadata();
         serialNumber = usbData.serialNumber;
         usbMetadata = usbData.usbMetadata;
         onMessage?.(`🆔 Device ID: ${serialNumber}`);
@@ -236,7 +225,7 @@ async function findPortInteractive(
     return [
       {
         port,
-        name: portName,
+        name: getPortDisplayName(port),
         isConnected: true,
         robotType: "so100_follower", // Default, user can change
         robotId: "interactive_robot",
