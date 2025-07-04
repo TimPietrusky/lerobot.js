@@ -1,5 +1,11 @@
 # @lerobot/web
 
+## 0.2.1
+
+### Patch Changes
+
+- 66cb510: fix: trigger WebSerial and WebUSB with the same user gesture
+
 ## 0.2.0
 
 ### Minor Changes
