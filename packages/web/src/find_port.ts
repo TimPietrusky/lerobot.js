@@ -175,26 +175,50 @@ async function findPortInteractive(
 ): Promise<RobotConnection[]> {
   const { onMessage } = options;
 
-  onMessage?.("Opening port selection dialog...");
+  onMessage?.("Opening device selection dialogs...");
 
   try {
-    // Step 1: Request Web Serial port
-    const port = await navigator.serial.requestPort();
+    // Step 1: Request both permissions simultaneously to preserve user gesture
+    let serialPortPromise = navigator.serial.requestPort();
+    let usbDevicePromise: Promise<{
+      serialNumber: string;
+      usbMetadata: RobotConnection["usbMetadata"];
+    }> | null = null;
+
+    if (isWebUSBSupported()) {
+      onMessage?.("📱 Requesting device access permissions...");
+      usbDevicePromise = requestUSBDeviceMetadata();
+    }
+
+    // Wait for serial port
+    const port = await serialPortPromise;
     await port.open({ baudRate: 1000000 });
 
     const portName = getPortDisplayName(port);
     onMessage?.(`✅ Connected to ${portName}`);
 
-    // Step 2: Request WebUSB device for metadata (if supported)
+    // Get USB metadata
     let serialNumber: string;
     let usbMetadata: RobotConnection["usbMetadata"];
 
-    if (isWebUSBSupported()) {
-      onMessage?.("📱 Requesting device identification...");
-      const usbData = await requestUSBDeviceMetadata();
-      serialNumber = usbData.serialNumber;
-      usbMetadata = usbData.usbMetadata;
-      onMessage?.(`🆔 Device ID: ${serialNumber}`);
+    if (usbDevicePromise) {
+      try {
+        const usbData = await usbDevicePromise;
+        serialNumber = usbData.serialNumber;
+        usbMetadata = usbData.usbMetadata;
+        onMessage?.(`🆔 Device ID: ${serialNumber}`);
+      } catch (usbError) {
+        onMessage?.("⚠️ Device identification failed, using fallback ID");
+        const fallbackId = `fallback-${Date.now()}`;
+        serialNumber = fallbackId;
+        usbMetadata = {
+          vendorId: "Unknown",
+          productId: "Unknown",
+          serialNumber: fallbackId,
+          manufacturerName: "USB Dialog Cancelled",
+          productName: "User cancelled device selection",
+        };
+      }
     } else {
       onMessage?.("⚠️ WebUSB not supported, using fallback ID");
       const fallbackId = `no-usb-${Date.now()}`;
