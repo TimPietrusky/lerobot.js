@@ -16,6 +16,11 @@ const roadmapItems: RoadmapItem[] = [
     status: "completed",
   },
   {
+    title: "releaseMotors",
+    description: "Release motor torque for safe manual positioning and setup",
+    status: "completed",
+  },
+  {
     title: "calibrate",
     description:
       "Real-time joint calibration with visual feedback and data export",
