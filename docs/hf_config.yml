@@ -1,5 +1,6 @@
 ---
 title: LeRobot.js
+short_description: interact with your robot in JS, inspired by LeRobot
 emoji: 🤖
 colorFrom: purple
 colorTo: pink
@@ -8,5 +9,6 @@ license: apache-2.0
 app_build_command: "npm install --legacy-peer-deps --prefix examples/cyberpunk-standalone && npm run build --prefix examples/cyberpunk-standalone"
 app_file: examples/cyberpunk-standalone/dist/index.html
 pinned: true
+suggested_hardware: cpu-basic
 ---
 
