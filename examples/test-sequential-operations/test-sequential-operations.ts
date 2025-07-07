@@ -132,7 +132,8 @@ window.runSequentialTest = async function () {
       log("✅ Calibration completed (simulated)");
     } else {
       // Real calibration
-      const calibrationProcess = await calibrate(robot, {
+      const calibrationProcess = await calibrate({
+        robot,
         onProgress: (message) => log(`📊 ${message}`),
         onLiveUpdate: (data) => {
           const motors = Object.keys(data);
@@ -210,12 +211,21 @@ window.runSequentialTest = async function () {
 
     // Step 4: Teleoperate with auto key simulation
     log("\n4️⃣ Starting teleoperation...");
-    const teleoperationProcess = await teleoperate(robot, {
+    const teleoperationProcess = await teleoperate({
+      robot,
       calibrationData: calibrationResult,
+      teleop: {
+        type: "keyboard",
+        stepSize: 25,
+      },
       onStateUpdate: (state) => {
-        if (state.isActive && Object.keys(state.keyStates).length > 0) {
+        if (
+          state.isActive &&
+          state.keyStates &&
+          Object.keys(state.keyStates).length > 0
+        ) {
           const activeKeys = Object.keys(state.keyStates).filter(
-            (k) => state.keyStates[k].pressed
+            (k) => state.keyStates![k].pressed
           );
           log(`🎮 Auto-simulated keys: ${activeKeys.join(", ")}`);
         }

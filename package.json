@@ -4,7 +4,10 @@
   "description": "State-of-the-art AI for real-world robotics in JS",
   "type": "module",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "examples/cyberpunk-standalone",
+    "examples/iframe-dialog-test",
+    "examples/test-sequential-operations"
   ],
   "bin": {
     "lerobot": "./dist/cli/index.js"
@@ -24,6 +27,8 @@
   "scripts": {
     "dev": "vite --mode demo",
     "example:cyberpunk": "cd examples/cyberpunk-standalone && pnpm dev",
+    "example:iframe-test": "cd examples/iframe-dialog-test && pnpm dev",
+    "example:sequential-test": "cd examples/test-sequential-operations && pnpm dev",
     "build": "pnpm run build:cli",
     "build:cli": "tsc --project tsconfig.cli.json",
     "build:demo": "tsc && vite build --mode demo",

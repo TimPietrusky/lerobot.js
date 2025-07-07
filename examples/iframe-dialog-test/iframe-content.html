@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Iframe Test Content</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        padding: 20px;
+        margin: 0;
+        background: white;
+        text-align: center;
+      }
+      button {
+        background: #2563eb;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 4px;
+        cursor: pointer;
+        margin: 5px;
+        font-size: 14px;
+      }
+      button:hover {
+        background: #1d4ed8;
+      }
+      .status {
+        margin: 10px 0;
+        padding: 10px;
+        background: #f3f4f6;
+        border-radius: 4px;
+        font-size: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <h3>🖼️ Inside Iframe</h3>
+    <p>This simulates HuggingFace Spaces environment</p>
+
+    <button onclick="testActualFindPort()">
+      Test Actual findPort Function
+    </button>
+    <button onclick="testSequential()">Test Mock Sequential</button>
+    <button onclick="testSimultaneous()">Test Mock Simultaneous</button>
+
+    <div id="status" class="status">Ready to test...</div>
+
+    <script type="module">
+      import { findPort } from "../packages/web/src/index.js";
+
+      function updateStatus(message) {
+        const status = document.getElementById("status");
+        const timestamp = new Date().toLocaleTimeString();
+        status.textContent = timestamp + ": " + message;
+
+        // Also log to parent window
+        window.parent.postMessage(
+          {
+            type: "iframe-log",
+            message: message,
+          },
+          "*"
+        );
+      }
+
+      window.testSequential = async function () {
+        updateStatus("Testing sequential dialogs...");
+
+        try {
+          updateStatus("Requesting WebSerial port...");
+          const serialPort = await navigator.serial.requestPort();
+          updateStatus("WebSerial port selected");
+
+          updateStatus("Requesting WebUSB device...");
+          const usbDevice = await navigator.usb.requestDevice({ filters: [] });
+          updateStatus("WebUSB device selected - SUCCESS!");
+        } catch (error) {
+          updateStatus("Failed: " + error.message);
+        }
+      };
+
+      window.testSimultaneous = async function () {
+        updateStatus("Testing simultaneous dialogs...");
+
+        try {
+          updateStatus("Starting both dialogs simultaneously...");
+          const [serialPortPromise, usbDevicePromise] = [
+            navigator.serial.requestPort(),
+            navigator.usb.requestDevice({ filters: [] }),
+          ];
+
+          const [serialPort, usbDevice] = await Promise.all([
+            serialPortPromise,
+            usbDevicePromise,
+          ]);
+
+          updateStatus("Both dialogs completed - SUCCESS!");
+        } catch (error) {
+          updateStatus("Failed: " + error.message);
+        }
+      };
+
+      // Test actual findPort function
+      window.testActualFindPort = async function () {
+        updateStatus("Testing actual findPort function...");
+
+        try {
+          updateStatus("Starting findPort with fallback behavior...");
+          const findProcess = await findPort({
+            onMessage: (msg) => updateStatus("findPort: " + msg),
+          });
+
+          const robots = await findProcess.result;
+          updateStatus("SUCCESS! Found " + robots.length + " robots");
+
+          robots.forEach((robot, index) => {
+            updateStatus(
+              "Robot " +
+                (index + 1) +
+                ": " +
+                robot.name +
+                " (" +
+                robot.robotType +
+                ")"
+            );
+          });
+        } catch (error) {
+          updateStatus("findPort failed: " + error.message);
+
+          // Analyze the error for debugging
+          if (error.message.includes("No port selected")) {
+            updateStatus("🔍 This should trigger sequential fallback mode");
+          } else if (error.message.includes("cancelled")) {
+            updateStatus("🔍 User cancelled dialog - expected for testing");
+          }
+        }
+      };
+
+      // Check environment on load
+      document.addEventListener("DOMContentLoaded", () => {
+        updateStatus(
+          "Environment: " + (window === window.top ? "Standalone" : "Iframe")
+        );
+        updateStatus(
+          "WebSerial: " +
+            ("serial" in navigator ? "Supported" : "Not supported")
+        );
+        updateStatus(
+          "WebUSB: " + ("usb" in navigator ? "Supported" : "Not supported")
+        );
+      });
+    </script>
+  </body>
+</html>

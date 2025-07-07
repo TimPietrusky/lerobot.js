@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Iframe Dialog Test</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 800px;
+        margin: 2rem auto;
+        padding: 2rem;
+        background: #f5f5f5;
+      }
+      .container {
+        background: white;
+        padding: 2rem;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      }
+      button {
+        background: #2563eb;
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 6px;
+        font-size: 16px;
+        cursor: pointer;
+        margin: 8px;
+      }
+      button:hover {
+        background: #1d4ed8;
+      }
+      .test-message {
+        background: #dcfce7;
+        border: 2px solid #16a34a;
+        color: #15803d;
+        padding: 1rem;
+        border-radius: 6px;
+        margin: 1rem 0;
+        font-size: 18px;
+        font-weight: bold;
+        text-align: center;
+      }
+      .iframe-container {
+        background: #e5e7eb;
+        padding: 20px;
+        border-radius: 8px;
+        margin-top: 20px;
+        border: 2px solid #d1d5db;
+      }
+      iframe {
+        width: 100%;
+        height: 400px;
+        border: 2px solid #9ca3af;
+        border-radius: 6px;
+        background: white;
+      }
+      .test-controls {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+      }
+      .log {
+        background: #1f2937;
+        color: #f9fafb;
+        padding: 1rem;
+        border-radius: 6px;
+        font-family: monospace;
+        font-size: 14px;
+        max-height: 400px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        margin-top: 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🧪 Dialog Test</h1>
+
+      <div class="test-message">✅ TEST PAGE LOADED SUCCESSFULLY!</div>
+
+      <div class="test-controls">
+        <button onclick="testDialogs()">🔌 Test Dialogs (Standalone)</button>
+        <button onclick="clearLog()">🗑️ Clear Log</button>
+      </div>
+
+      <div class="iframe-container">
+        <h3>🖼️ Iframe Environment (Simulates HuggingFace Spaces)</h3>
+        <div class="test-controls">
+          <button onclick="loadIframe('permissive')">🔓 Permissive</button>
+          <button onclick="loadIframe('restricted')">🔒 Restricted</button>
+          <button onclick="loadIframe('crossorigin')">🌐 Cross-Origin</button>
+        </div>
+        <iframe
+          id="testFrame"
+          src="about:blank"
+          title="Dialog Test Iframe"
+        ></iframe>
+        <div
+          id="iframeInfo"
+          style="margin-top: 10px; font-size: 12px; color: #666"
+        >
+          Current iframe mode: None loaded
+        </div>
+      </div>
+
+      <div id="log" class="log">Ready to test...</div>
+    </div>
+
+    <script>
+      function log(message) {
+        const logElement = document.getElementById("log");
+        const timestamp = new Date().toLocaleTimeString();
+        logElement.textContent += "[" + timestamp + "] " + message + "\n";
+        logElement.scrollTop = logElement.scrollHeight;
+      }
+
+      function clearLog() {
+        document.getElementById("log").textContent = "Log cleared.\n";
+      }
+
+      function loadIframe(mode) {
+        const iframe = document.getElementById("testFrame");
+        const infoElement = document.getElementById("iframeInfo");
+
+        if (!iframe) return;
+
+        iframe.removeAttribute("sandbox");
+        iframe.removeAttribute("allow");
+
+        let description = "";
+
+        switch (mode) {
+          case "permissive":
+            iframe.setAttribute("allow", "serial; usb");
+            description = "Permissive: Full access to WebSerial and WebUSB";
+            iframe.src = "iframe-content.html";
+            break;
+          case "restricted":
+            iframe.setAttribute(
+              "sandbox",
+              "allow-scripts allow-same-origin allow-popups allow-forms"
+            );
+            iframe.setAttribute("allow", "serial; usb");
+            description = "Restricted: Sandboxed with limited permissions";
+            iframe.src = "iframe-content.html";
+            break;
+          case "crossorigin":
+            iframe.setAttribute(
+              "sandbox",
+              "allow-scripts allow-popups allow-forms"
+            );
+            iframe.setAttribute("allow", "serial; usb");
+            description =
+              "Cross-Origin: Different origin with sandbox restrictions";
+            iframe.src = "iframe-content.html";
+            break;
+        }
+
+        if (infoElement) {
+          infoElement.textContent = "Current iframe mode: " + description;
+        }
+
+        log("📝 Loaded iframe in " + mode + " mode: " + description);
+      }
+
+      async function testDialogs() {
+        log("🎯 Starting dialog test...");
+
+        try {
+          log("📡 Requesting WebSerial port...");
+          const serialPort = await navigator.serial.requestPort();
+          log("✅ WebSerial port selected");
+
+          log("🔌 Requesting WebUSB device...");
+          const usbDevice = await navigator.usb.requestDevice({ filters: [] });
+          log("✅ WebUSB device selected - SUCCESS!");
+        } catch (error) {
+          log("❌ Failed: " + error.message);
+        }
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        log("✅ Page loaded successfully");
+        log(
+          "WebSerial: " +
+            ("serial" in navigator ? "Supported" : "Not supported")
+        );
+        log("WebUSB: " + ("usb" in navigator ? "Supported" : "Not supported"));
+      });
+
+      window.addEventListener("message", (event) => {
+        if (event.data.type === "iframe-log") {
+          log("[IFRAME] " + event.data.message);
+        }
+      });
+    </script>
+  </body>
+</html>
