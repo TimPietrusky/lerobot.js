@@ -230,6 +230,28 @@ const calibrationData = await calibrationProcess.result;`}
               </CodeBlock>
               <div className="mt-3">
                 <h5 className="font-bold text-sm text-muted-foreground tracking-wider">
+                  Options
+                </h5>
+                <ul className="mt-1 ml-4 space-y-1 text-sm text-muted-foreground">
+                  <li>
+                    • <code>robot: RobotConnection</code> - Connected robot from
+                    findPort()
+                  </li>
+                  <li>
+                    • <code>onProgress?: (message: string) =&gt; void</code> -
+                    Progress messages callback
+                  </li>
+                  <li>
+                    •{" "}
+                    <code>
+                      onLiveUpdate?: (data: LiveCalibrationData) =&gt; void
+                    </code>{" "}
+                    - Real-time position updates
+                  </li>
+                </ul>
+              </div>
+              <div className="mt-3">
+                <h5 className="font-bold text-sm text-muted-foreground tracking-wider">
                   Returns:{" "}
                   <code className="bg-muted/50 px-1 rounded">
                     CalibrationProcess
@@ -272,6 +294,45 @@ const directTeleop = await teleoperate({
   teleop: { type: "direct" },
 });`}
               </CodeBlock>
+              <div className="mt-3">
+                <h5 className="font-bold text-sm text-muted-foreground tracking-wider">
+                  Options
+                </h5>
+                <ul className="mt-1 ml-4 space-y-1 text-sm text-muted-foreground">
+                  <li>
+                    • <code>robot: RobotConnection</code> - Connected robot from
+                    findPort()
+                  </li>
+                  <li>
+                    • <code>teleop: TeleoperatorConfig</code> - Teleoperator
+                    configuration:
+                    <ul className="mt-1 ml-4 space-y-1">
+                      <li>
+                        • <code>{`{ type: "keyboard" }`}</code> - Keyboard
+                        control
+                      </li>
+                      <li>
+                        • <code>{`{ type: "direct" }`}</code> - Direct
+                        programmatic control
+                      </li>
+                    </ul>
+                  </li>
+                  <li>
+                    •{" "}
+                    <code>
+                      calibrationData?: {`{ [motorName: string]: any }`}
+                    </code>{" "}
+                    - Calibration data from calibrate()
+                  </li>
+                  <li>
+                    •{" "}
+                    <code>
+                      onStateUpdate?: (state: TeleoperationState) =&gt; void
+                    </code>{" "}
+                    - State change callback
+                  </li>
+                </ul>
+              </div>
               <div className="mt-3">
                 <h5 className="font-bold text-sm text-muted-foreground tracking-wider">
                   Returns:{" "}
@@ -320,7 +381,7 @@ await releaseMotors(robot, [1, 2, 3]);`}
               </CodeBlock>
               <div className="mt-3">
                 <h5 className="font-bold text-sm text-muted-foreground tracking-wider">
-                  Parameters
+                  Options
                 </h5>
                 <ul className="mt-1 ml-4 space-y-1 text-sm text-muted-foreground">
                   <li>

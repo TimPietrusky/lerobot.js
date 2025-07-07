@@ -176,7 +176,7 @@ const calibrationData = await calibrationProcess.result;
 // Save calibration data to localStorage or file
 ```
 
-#### Parameters
+#### Options
 
 - `config: CalibrateConfig`
   - `robot: RobotConnection` - Connected robot from `findPort()`
@@ -263,7 +263,7 @@ await directController.setMotorPositions({
 setTimeout(() => directTeleop.stop(), 30000);
 ```
 
-#### Parameters
+#### Options
 
 - `config: TeleoperateConfig`
   - `robot: RobotConnection` - Connected robot from `findPort()`
@@ -307,7 +307,7 @@ await releaseMotors(robot);
 await releaseMotors(robot, [1, 2, 3]);
 ```
 
-#### Parameters
+#### Options
 
 - `robot: RobotConnection` - Connected robot
 - `motorIds?: number[]` - Specific motor IDs (default: all motors for robot type)
