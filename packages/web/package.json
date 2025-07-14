@@ -43,8 +43,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/timpietrusky/lerobot.js",
-    "directory": "packages/web"
+    "url": "https://github.com/timpietrusky/lerobot.js/tree/main/packages/web"
   },
   "license": "Apache-2.0",
   "author": "Tim Pietrusky",
