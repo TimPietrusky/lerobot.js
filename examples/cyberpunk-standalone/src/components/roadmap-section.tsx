@@ -32,6 +32,11 @@ const roadmapItems: RoadmapItem[] = [
     status: "completed",
   },
   {
+    title: "node/cli",
+    description: "Node.js CLI tools for robot control and automation scripts",
+    status: "in_progress",
+  },
+  {
     title: "SO-100 leader arm",
     description: "Leader arm teleoperation support for intuitive robot control",
     status: "in_progress",
