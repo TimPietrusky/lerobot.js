@@ -72,6 +72,7 @@ export class DirectTeleoperator extends BaseWebTeleoperator {
     );
 
     const prevPosition = motorConfig.currentPosition;
+    const prevMotorConfigs = structuredClone(this.motorConfigs)
 
     try {
       await writeMotorPosition(
@@ -87,7 +88,7 @@ export class DirectTeleoperator extends BaseWebTeleoperator {
         this.onStateUpdate(this.buildTeleoperationState());
       }
 
-      this.dispatchMotorPositionChanged(motorName, motorConfig, prevPosition, clampedPosition, commandSentTimestamp, positionChangedTimestamp);
+      this.dispatchMotorPositionChanged(prevMotorConfigs,this.motorConfigs, commandSentTimestamp, positionChangedTimestamp);
 
       return true;
     } catch (error) {
@@ -102,11 +103,16 @@ export class DirectTeleoperator extends BaseWebTeleoperator {
   async setMotorPositions(positions: {
     [motorName: string]: number;
   }): Promise<boolean> {
+    const commandSentTimestamp = performance.now();
+    const prevMotorConfigs = structuredClone(this.motorConfigs)
     const results = await Promise.all(
       Object.entries(positions).map(([motorName, position]) =>
         this.moveMotor(motorName, position)
       )
     );
+    const positionChangedTimestamp = performance.now();
+
+    this.dispatchMotorPositionChanged(prevMotorConfigs,this.motorConfigs, commandSentTimestamp, positionChangedTimestamp);
 
     return results.every((result) => result);
   }

@@ -219,13 +219,14 @@ export class KeyboardTeleoperator extends BaseWebTeleoperator {
       );
     }
 
+    const prevMotorConfigs = structuredClone(this.motorConfigs);
+    const commandSentTimestamp = performance.now();
+
+
     // Send motor commands and update positions
     for (const [motorName, targetPosition] of Object.entries(targetPositions)) {
       const motorConfig = this.motorConfigs.find((m) => m.name === motorName);
-      if (motorConfig && targetPosition !== motorConfig.currentPosition) {
-        const commandSentTimestamp = performance.now();
-        const prevPosition = motorConfig.currentPosition;
-        
+      if (motorConfig && targetPosition !== motorConfig.currentPosition) {        
         try {
           await writeMotorPosition(
             this.port,
@@ -234,17 +235,6 @@ export class KeyboardTeleoperator extends BaseWebTeleoperator {
           );
           
           motorConfig.currentPosition = targetPosition;
-          const positionChangedTimestamp = performance.now();
-          
-          // Dispatch event for motor position change
-          this.dispatchMotorPositionChanged(
-            motorName,
-            motorConfig, 
-            prevPosition, 
-            targetPosition, 
-            commandSentTimestamp, 
-            positionChangedTimestamp
-          );
         } catch (error) {
           console.warn(
             `Failed to write motor ${motorConfig.id} position:`,
@@ -253,5 +243,16 @@ export class KeyboardTeleoperator extends BaseWebTeleoperator {
         }
       }
     }
+
+
+    const positionChangedTimestamp = performance.now();
+
+    // Dispatch event for motor position change
+    this.dispatchMotorPositionChanged(
+      prevMotorConfigs,
+      this.motorConfigs,
+      commandSentTimestamp, 
+      positionChangedTimestamp
+    );
   }
 }

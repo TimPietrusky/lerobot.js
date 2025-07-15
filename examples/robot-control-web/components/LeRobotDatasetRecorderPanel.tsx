@@ -13,7 +13,6 @@ export const LeRobotDatasetRecorderPanel: React.FC<LeRobotDatasetRecorderPanelPr
   recorder,
   className = '',
 }) => {
-  console.log("recorder : ", recorder)
   const [isRecording, setIsRecording] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
@@ -69,29 +68,9 @@ export const LeRobotDatasetRecorderPanel: React.FC<LeRobotDatasetRecorderPanelPr
       return;
     }
     
-    try {
-      setIsExporting(true);
-      const data = await recorder.exportTeleoperatorData();
-      
-      // Create a downloadable JSON file
-      const jsonString = JSON.stringify(data, null, 2);
-      const blob = new Blob([jsonString], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      
-      // Create and trigger download
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `lerobot-teleop-data-${new Date().toISOString()}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      
-      setIsExporting(false);
-    } catch (error) {
-      console.error('Failed to export teleoperator data:', error);
-      setIsExporting(false);
-    }
+    setIsExporting(true);
+    await recorder.exportForLeRobot();
+    setIsExporting(false);
   };
 
   const handleExportFullData = async () => {

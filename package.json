@@ -47,8 +47,9 @@
     "@lerobot/web": "workspace:*",
     "@radix-ui/react-dialog": "^1.1.14",
     "@radix-ui/react-progress": "^1.1.7",
+    "apache-arrow": "^21.0.0",
     "log-update": "^6.1.0",
-    "parquetjs": "^0.11.2",
+    "parquet-wasm": "^0.6.1",
     "serialport": "^12.0.0"
   },
   "devDependencies": {

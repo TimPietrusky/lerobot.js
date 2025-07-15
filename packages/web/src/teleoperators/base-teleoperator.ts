@@ -118,6 +118,43 @@ export abstract class BaseWebTeleoperator extends WebTeleoperator {
     this.motorConfigs = motorConfigs;
   }
 
+  normalizeMotorConfigPosition(motorConfig: MotorConfig){
+    let minNormPosition;
+    let maxNormPosition;
+
+    /**
+     * This follows the guide at https://github.com/huggingface/lerobot/blob/cf86b9300dc83fdad408cfe4787b7b09b55f12cf/src/lerobot/robots/so100_follower/so100_follower.py#L49
+     * Meaning, for everything except gripper, it normalizes the positions to between -100 and 100
+     * and for gripper it normalizes between 0 - 100
+     */
+    if(["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"].includes(motorConfig.name)) {
+      minNormPosition = -100;
+      maxNormPosition = 100;
+    } else {
+      minNormPosition = 0;
+      maxNormPosition = 100;
+    }
+
+    return normalizeValue(motorConfig.currentPosition, motorConfig.minPosition, motorConfig.maxPosition, minNormPosition, maxNormPosition)
+  }
+
+  /**
+   * Normalize an entire list of motor configurations
+   * 
+   * This follows the guide at https://github.com/huggingface/lerobot/blob/cf86b9300dc83fdad408cfe4787b7b09b55f12cf/src/lerobot/robots/so100_follower/so100_follower.py#L49
+   * Meaning, for everything except gripper, it normalizes the positions to between -100 and 100
+   * and for gripper it normalizes between 0 - 100
+   */
+  normalizeMotorConfigs(motorConfigs : MotorConfig[]){
+    let normalizedValues : { [key: string]: number} = {};
+
+    for(let config of motorConfigs){
+      normalizedValues[config.name] = this.normalizeMotorConfigPosition(config)
+    }
+
+    return normalizedValues
+  }
+
   /**
    * Dispatches a motor position changed event
    * Gets the motor positions, normalized
@@ -132,31 +169,13 @@ export abstract class BaseWebTeleoperator extends WebTeleoperator {
    * @param currentPosition The current position of the motor
    * @param timestamp The timestamp of the event
    */
-  dispatchMotorPositionChanged(motorName: string, motorConfig: MotorConfig, previousPosition: number, currentPosition: number, commandSentTimestamp: number, positionChangedTimestamp: number): void {
-    let minNormPosition;
-    let maxNormPosition;
-
-    /**
-     * This follows the guide at https://github.com/huggingface/lerobot/blob/cf86b9300dc83fdad408cfe4787b7b09b55f12cf/src/lerobot/robots/so100_follower/so100_follower.py#L49
-     * Meaning, for everything except gripper, it normalizes the positions to between -100 and 100
-     * and for gripper it normalizes between 0 - 100
-     */
-    if(["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"].includes(motorName)) {
-      minNormPosition = -100;
-      maxNormPosition = 100;
-    } else {
-      minNormPosition = 0;
-      maxNormPosition = 100;
-    }
-
+  dispatchMotorPositionChanged(prevMotorConfigs: MotorConfig[], newMotorConfigs: MotorConfig[], commandSentTimestamp: number, positionChangedTimestamp: number): void {
     this.dispatchEvent(new CustomEvent("motor-position-changed", {
       detail: {
-        motorName,
-        motorConfig,
-        previousPosition,
-        currentPosition,
-        previousNormalizedPosition : normalizeValue(previousPosition, motorConfig.minPosition, motorConfig.maxPosition, minNormPosition, maxNormPosition),
-        currentNormalizedPosition : normalizeValue(currentPosition, motorConfig.minPosition, motorConfig.maxPosition, minNormPosition, maxNormPosition),
+        previousMotorConfigs : prevMotorConfigs,
+        newMotorConfigs,
+        previousMotorConfigsNormalized : this.normalizeMotorConfigs(prevMotorConfigs),
+        newMotorConfigsNormalized : this.normalizeMotorConfigs(newMotorConfigs),
         commandSentTimestamp,
         positionChangedTimestamp,
         episodeIndex: this.recordingEpisodeIndex,
@@ -168,14 +187,14 @@ export abstract class BaseWebTeleoperator extends WebTeleoperator {
     // if recording, store the changes
     if(this.isRecording) {
       this.recordedMotorPositions.push({
-        motorName,
-        motorConfig,
-        previousPosition,
-        currentPosition,
-        previousNormalizedPosition : normalizeValue(previousPosition, motorConfig.minPosition, motorConfig.maxPosition, minNormPosition, maxNormPosition),
-        currentNormalizedPosition : normalizeValue(currentPosition, motorConfig.minPosition, motorConfig.maxPosition, minNormPosition, maxNormPosition),
+        previousMotorConfigs : prevMotorConfigs,
+        newMotorConfigs,
+        previousMotorConfigsNormalized : this.normalizeMotorConfigs(prevMotorConfigs),
+        newMotorConfigsNormalized : this.normalizeMotorConfigs(newMotorConfigs),
         commandSentTimestamp,
         positionChangedTimestamp,
+        episodeIndex: this.recordingEpisodeIndex,
+        taskIndex: this.recordingTaskIndex,
       });
     }
   }

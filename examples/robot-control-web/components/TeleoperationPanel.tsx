@@ -89,22 +89,8 @@ export function TeleoperationPanel({
 
         console.log("✅ Initialized both keyboard and direct teleoperators");
 
-        // TODO : REMOVE
-        // temporary check
-        keyboardProcess.teleoperator.startRecording();
-        directProcess.teleoperator.startRecording();
-
         leRobotDatasetRecorderRef.current = 
-            new LeRobotDatasetRecorder([keyboardProcess.teleoperator,directProcess.teleoperator], 30);
-
-        console.log("starting recording...", directProcess.teleoperator.isRecording)
-
-
-        setInterval(() => {
-          console.log("get teleoperator positions!!!")
-          console.log(directProcess.teleoperator.recordedMotorPositions);
-          console.log(keyboardProcess.teleoperator.recordedMotorPositions);
-        }, 5000)
+            new LeRobotDatasetRecorder([keyboardProcess.teleoperator,directProcess.teleoperator], {}, 30);
         
       } catch (error) {
         const errorMessage =
