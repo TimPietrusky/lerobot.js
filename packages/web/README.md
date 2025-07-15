@@ -344,15 +344,19 @@ const recorder = new LeRobotDatasetRecorder({
 });
 
 // Start recording an episode
-recorder.startRecording(0); // episodeIndex = 0
+recorder.startRecording(); // episodeIndex = 0
 
 // ... perform teleoperator actions ...
+
+// Start another episode
+recorder.setEpisodeIndex(1);
+
+// ... perform more teleoperator actions ...
 
 // Stop recording
 recorder.stopRecording();
 
-// Start another episode
-recorder.startRecording(1); // episodeIndex = 1
+
 
 // ... perform more teleoperator actions ...
 
