@@ -1,5 +1,4 @@
-import { WebTeleoperator } from "./teleoperators";
-import {parquet} from "parquetjs"
+import { WebTeleoperator } from "./teleoperators/base-teleoperator";
 
 // declare a type leRobot action that's basically an array of numbers
 interface LeRobotAction {

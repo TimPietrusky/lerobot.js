@@ -8,10 +8,12 @@ import {
   type TeleoperationProcess,
   type TeleoperationState,
   type TeleoperateConfig,
+  LeRobotDatasetRecorder,
 } from "@lerobot/web";
 import { getUnifiedRobotData } from "../lib/unified-storage";
 import type { RobotConnection } from "@lerobot/web";
 import { SO100_KEYBOARD_CONTROLS } from "@lerobot/web";
+import { LeRobotDatasetRecorderPanel } from "./LeRobotDatasetRecorderPanel";
 
 interface TeleoperationPanelProps {
   robot: RobotConnection;
@@ -35,6 +37,7 @@ export function TeleoperationPanel({
   // Separate refs for keyboard and direct teleoperators
   const keyboardProcessRef = useRef<TeleoperationProcess | null>(null);
   const directProcessRef = useRef<TeleoperationProcess | null>(null);
+  const leRobotDatasetRecorderRef = useRef<LeRobotDatasetRecorder | null>(null);
 
   // Initialize both teleoperation processes
   useEffect(() => {
@@ -90,6 +93,10 @@ export function TeleoperationPanel({
         // temporary check
         keyboardProcess.teleoperator.startRecording();
         directProcess.teleoperator.startRecording();
+
+        leRobotDatasetRecorderRef.current = 
+            new LeRobotDatasetRecorder([keyboardProcess.teleoperator,directProcess.teleoperator], 30);
+
         console.log("starting recording...", directProcess.teleoperator.isRecording)
 
 
@@ -475,6 +482,10 @@ export function TeleoperationPanel({
                 )}
               </div>
             </CardContent>
+
+            {leRobotDatasetRecorderRef.current && (
+              <LeRobotDatasetRecorderPanel recorder={leRobotDatasetRecorderRef.current} />
+            )}
           </Card>
 
           {/* Virtual Keyboard */}
