@@ -321,3 +321,109 @@ await releaseMotors(robot, [1, 2, 3]);
 ## Hardware Support
 
 Currently supports SO-100 follower and leader arms with STS3215 motors. More devices coming soon.
+
+---
+
+## Dataset Export
+
+### `LeRobotDatasetRecorder`: Recording and Exporting Data for Machine Learning
+
+The `LeRobotDatasetRecorder` enables recording robot control sessions and exporting them in the [LeRobot dataset format](https://github.com/huggingface/lerobot#the-lerobotdataset-format) for machine learning training.
+
+```typescript
+import { LeRobotDatasetRecorder } from '@lerobot/web';
+
+// Create a recorder instance with teleoperator and video streams
+const recorder = new LeRobotDatasetRecorder({
+  teleoperator: teleop,
+  videoElements: {
+    front: frontCameraVideoElement,
+    side: sideCameraVideoElement
+  },
+  taskDescription: "Pick and place task"
+});
+
+// Start recording an episode
+recorder.startRecording(0); // episodeIndex = 0
+
+// ... perform teleoperator actions ...
+
+// Stop recording
+recorder.stopRecording();
+
+// Start another episode
+recorder.startRecording(1); // episodeIndex = 1
+
+// ... perform more teleoperator actions ...
+
+// Stop recording
+recorder.stopRecording();
+
+// Export the full dataset including videos
+const zipBlob = await recorder.exportForLeRobot();
+
+// Save to file
+const url = URL.createObjectURL(zipBlob);
+const a = document.createElement('a');
+a.href = url;
+a.download = 'lerobot-dataset.zip';
+a.click();
+URL.revokeObjectURL(url);
+```
+
+#### Adding Video Streams Dynamically
+
+You can add additional video streams after initialization:
+
+```typescript
+// Get user media stream from camera
+const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+
+// Add to recorder with a key name
+recorder.addVideoStream('distance', stream);
+```
+
+#### Dataset Structure
+
+The exported zip contains the following structure:
+
+```
+/data/chunk-000/file-000.parquet  # Teleoperator actions
+/videos/observation.images.{camera-key}/chunk-000/file-000.mp4  # Video recordings
+/meta/info.json  # Dataset metadata
+/meta/stats.json  # Dataset statistics
+/meta/tasks.parquet  # Task descriptions
+/meta/episodes/chunk-000/file-000.parquet  # Episode statistics
+/README.md  # Dataset documentation
+```
+
+#### Parquet Data Structure and Arrow Arrays
+
+The recorder handles complex array data structures by using Apache Arrow Lists with named fields to ensure parquet-wasm compatibility:
+
+```typescript
+// Array field handling for parquet serialization
+// 1. For count arrays (integer data)
+columns['field/count'] = vectorFromArray(
+  values, 
+  new arrow.List(new arrow.Field("item", new arrow.Int64()))
+);
+
+// 2. For image statistics (3D arrays)
+columns['observation.images.front/mean'] = vectorFromArray(
+  values,
+  new arrow.List(new arrow.Field("item", 
+    new arrow.List(new arrow.Field("subitem", 
+      new arrow.List(new arrow.Field("value", new arrow.Float64()))
+    ))
+  ))
+);
+
+// 3. For standard 1D float arrays
+columns['field/mean'] = vectorFromArray(
+  values,
+  new arrow.List(new arrow.Field("item", new arrow.Float64()))
+);
+```
+
+This structure ensures that array data is properly serialized in the parquet files and can be loaded correctly in Python using libraries like pandas, pyarrow, or the LeRobot dataset loader.
