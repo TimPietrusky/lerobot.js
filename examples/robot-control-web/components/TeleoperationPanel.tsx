@@ -85,6 +85,20 @@ export function TeleoperationPanel({
         setError(null);
 
         console.log("✅ Initialized both keyboard and direct teleoperators");
+
+        // TODO : REMOVE
+        // temporary check
+        keyboardProcess.teleoperator.startRecording();
+        directProcess.teleoperator.startRecording();
+        console.log("starting recording...", directProcess.teleoperator.isRecording)
+
+
+        setInterval(() => {
+          console.log("get teleoperator positions!!!")
+          console.log(directProcess.teleoperator.recordedMotorPositions);
+          console.log(keyboardProcess.teleoperator.recordedMotorPositions);
+        }, 5000)
+        
       } catch (error) {
         const errorMessage =
           error instanceof Error

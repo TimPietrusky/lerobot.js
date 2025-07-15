@@ -26,9 +26,18 @@ function normalizeValue(value: number, minVal: number, maxVal: number, minNorm: 
  * Base interface that all Web teleoperators must implement
  */
 export abstract class WebTeleoperator extends EventTarget {
+  abstract recordedMotorPositions: any;
   abstract initialize(): Promise<void>;
   abstract start(): void;
   abstract stop(): void;
+
+  abstract recordingTaskIndex : number;
+  abstract recordingEpisodeIndex : number;
+  abstract startRecording(): void;
+  abstract stopRecording(): any;
+  abstract setEpisodeIndex(index: number): void;
+  abstract setTaskIndex(index: number): void;
+  
   abstract disconnect(): Promise<void>;
   abstract getState(): TeleoperatorSpecificState;
   abstract onMotorConfigsUpdate(motorConfigs: MotorConfig[]): void;
@@ -50,8 +59,10 @@ export abstract class BaseWebTeleoperator extends WebTeleoperator {
   protected port: MotorCommunicationPort;
   public motorConfigs: MotorConfig[] = [];
   protected isActive: boolean = false;
-  protected recordedMotorPositions: any;
+  public recordedMotorPositions: any;
   public isRecording: boolean = false;
+  public recordingTaskIndex : number;
+  public recordingEpisodeIndex : number;
 
   constructor(port: MotorCommunicationPort, motorConfigs: MotorConfig[]) {
     super();
@@ -61,6 +72,8 @@ export abstract class BaseWebTeleoperator extends WebTeleoperator {
     // utility to store all position changes asked for and planned
     this.recordedMotorPositions = [];
     this.isRecording = false;
+    this.recordingTaskIndex = 0;
+    this.recordingEpisodeIndex = 0;
   }
 
   abstract initialize(): Promise<void>;
@@ -80,6 +93,14 @@ export abstract class BaseWebTeleoperator extends WebTeleoperator {
    */
   startRecording(): void {
     this.isRecording = true;
+  }
+
+  setEpisodeIndex(index: number): void {
+    this.recordingEpisodeIndex = index;
+  }
+
+  setTaskIndex(index: number): void {
+    this.recordingTaskIndex = index;
   }
 
   /**
@@ -138,10 +159,12 @@ export abstract class BaseWebTeleoperator extends WebTeleoperator {
         currentNormalizedPosition : normalizeValue(currentPosition, motorConfig.minPosition, motorConfig.maxPosition, minNormPosition, maxNormPosition),
         commandSentTimestamp,
         positionChangedTimestamp,
+        episodeIndex: this.recordingEpisodeIndex,
+        taskIndex: this.recordingTaskIndex,
       },
     }));
 
-
+    console.log("this was called", this.isRecording, "---")
     // if recording, store the changes
     if(this.isRecording) {
       this.recordedMotorPositions.push({
