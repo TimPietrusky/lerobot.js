@@ -142,14 +142,13 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
       const initialPositions: {
         [motorName: string]: { position: number; timestamp: number };
       } = {};
-      initialState.motorConfigs.forEach((motor) => {
+      initialState.motorConfigs.forEach((motor : any) => {
         initialPositions[motor.name] = {
           position: motor.currentPosition,
           timestamp: Date.now(),
         };
       });
       setLocalMotorPositions(initialPositions);
-
       setIsInitialized(true);
 
       return true;

@@ -146,7 +146,6 @@ export async function teleoperate(
   config: TeleoperateConfig
 ): Promise<TeleoperationProcess> {
   const teleoperator = await createTeleoperatorProcess(config);
-  const motorConfigs = teleoperator.motorConfigs;
 
   return {
     start: () => {
@@ -174,6 +173,8 @@ export async function teleoperate(
     getState: () => buildTeleoperationStateFromTeleoperator(teleoperator),
     teleoperator,
     disconnect: () => teleoperator.disconnect(),
+    startRecording: () => teleoperator.startRecording(),
+    stopRecording: () => teleoperator.stopRecording(),
   };
 }
 
