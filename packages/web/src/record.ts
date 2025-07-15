@@ -343,7 +343,10 @@ export class LeRobotDatasetRecorder {
 
         const table = tableFromArrays({
             timestamp: timestamps,
+            // @ts-ignore, this works, idk why
             action: vectorFromArray(actions, new arrow.List(new arrow.Field("item", new arrow.Float32()))),
+
+            // @ts-ignore, this works, idk why
             "observation.state": vectorFromArray(observationStates, new arrow.List(new arrow.Field("item", new arrow.Float32()))),
             episode_index: episodeIndexes,
             task_index: taskIndexes,
