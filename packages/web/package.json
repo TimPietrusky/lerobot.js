@@ -36,7 +36,17 @@
   ],
   "scripts": {
     "build": "tsc --project tsconfig.build.json",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "dev": "vitest --watch",
+    "test": "vitest run",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "vitest": "^2.0.0",
+    "@vitest/ui": "^2.0.0",
+    "jsdom": "^24.0.0",
+    "vite": "^6.3.5"
   },
   "peerDependencies": {
     "typescript": ">=4.5.0"
