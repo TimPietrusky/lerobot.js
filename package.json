@@ -48,6 +48,7 @@
     "@radix-ui/react-dialog": "^1.1.14",
     "@radix-ui/react-progress": "^1.1.7",
     "apache-arrow": "^21.0.0",
+    "jszip": "^3.10.1",
     "log-update": "^6.1.0",
     "parquet-wasm": "^0.6.1",
     "serialport": "^12.0.0"

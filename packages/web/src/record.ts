@@ -1,6 +1,7 @@
 import { WebTeleoperator } from "./teleoperators/base-teleoperator";
 import * as parquet from 'parquet-wasm';
 import * as arrow from 'apache-arrow';
+import JSZip from 'jszip';
 
 // declare a type leRobot action that's basically an array of numbers
 interface LeRobotAction {
@@ -312,40 +313,25 @@ export class LeRobotDatasetRecorder {
     }
 
     /**
-     * exports the teleoperator data in lerobot format, 
-     * returns an array of the entire
-     * Teleoperator data structure
+     * Converts teleoperator data to a parquet blob
+     * @private
+     * @returns A Uint8Array containing the parquet data
      */
-    async exportTeleoperatorData(){
-        if(this._isRecording) throw new Error("This can only be called, after recording has stopped!");
-        const data = await this.convertActionDataToLeRobotFormat();
-        return data
-    }
-
-    /**
-     * exports all the data in a zip file for lerobot format
-     * (caution heavy)
-     * 
-     * This converts to apache-arrow by wasm first, then to parquet,
-     * so it is slow
-     */
-    async exportForLeRobot(){
-        const data = await this.exportTeleoperatorData();
+    private async _exportTeleoperatorDataToBlob(data: any[]): Promise<Uint8Array> {
         const { tableFromArrays, vectorFromArray } = arrow;
 
-        const timestamps = data.map((row : any) => row.timestamp);
-        const actions = data.map((row : any) => row.action);
-        const observationStates = data.map((row : any) => row["observation.state"]);
-        const episodeIndexes = data.map((row : any) => row.episode_index);
-        const taskIndexes = data.map((row : any) => row.task_index);
-        const frameIndexes = data.map((row : any) => row.frame_index);
-        const indexes = data.map((row : any) => row.index);
+        const timestamps = data.map((row: any) => row.timestamp);
+        const actions = data.map((row: any) => row.action);
+        const observationStates = data.map((row: any) => row["observation.state"]);
+        const episodeIndexes = data.map((row: any) => row.episode_index);
+        const taskIndexes = data.map((row: any) => row.task_index);
+        const frameIndexes = data.map((row: any) => row.frame_index);
+        const indexes = data.map((row: any) => row.index);
 
         const table = tableFromArrays({
             timestamp: timestamps,
             // @ts-ignore, this works, idk why
             action: vectorFromArray(actions, new arrow.List(new arrow.Field("item", new arrow.Float32()))),
-
             // @ts-ignore, this works, idk why
             "observation.state": vectorFromArray(observationStates, new arrow.List(new arrow.Field("item", new arrow.Float32()))),
             episode_index: episodeIndexes,
@@ -355,25 +341,81 @@ export class LeRobotDatasetRecorder {
         });
 
         const wasmUrl = "https://cdn.jsdelivr.net/npm/parquet-wasm@0.6.1/esm/parquet_wasm_bg.wasm";
-        const initWasm = parquet.default
-        await initWasm(wasmUrl)
+        const initWasm = parquet.default;
+        await initWasm(wasmUrl);
 
         const wasmTable = parquet.Table.fromIPCStream(arrow.tableToIPC(table, "stream"));
         const writerProperties = new parquet.WriterPropertiesBuilder()
             .setCompression(parquet.Compression.ZSTD)
             .build();
-        const parquetUint8Array = parquet.writeParquet(wasmTable, writerProperties);
-
-        // Create a blob from the parquet data
-        const blob = new Blob([parquetUint8Array], { type: 'application/octet-stream' });
         
-        // Create a URL for the blob
-        const url = URL.createObjectURL(blob);
+        return parquet.writeParquet(wasmTable, writerProperties);
+    }
+
+    /**
+     * Exports the teleoperator data in lerobot format
+     * @param format The format to return the data in ('json' or 'blob')
+     * @returns Either an array of data objects or a Uint8Array blob depending on format
+     */
+    async exportTeleoperatorData(format: 'json' | 'blob' = 'json') {
+        if(this._isRecording) throw new Error("This can only be called after recording has stopped!");
+        const data = await this.convertActionDataToLeRobotFormat();
+        
+        if (format === 'json') {
+            return data;
+        } else {
+            return this._exportTeleoperatorDataToBlob(data);
+        }
+    }
+
+    /**
+     * Exports the media (video) data as blobs
+     * @returns A dictionary of video blobs with the same keys as videoStreams
+     */
+    async exportMediaData(): Promise<{ [key: string]: Blob }> {
+        if(this._isRecording) throw new Error("This can only be called after recording has stopped!");
+        return this.videoBlobs;
+    }
+
+    /**
+     * Exports all the data in a zip file for lerobot format
+     * (caution heavy)
+     * 
+     * This converts to apache-arrow by wasm first, then to parquet,
+     * so it is slow. It also includes all recorded videos in the proper directory structure.
+     */
+    async exportForLeRobot() {
+        const parquetUint8Array = await this.exportTeleoperatorData('blob') as Uint8Array;
+        const videoBlobs = await this.exportMediaData();
+
+        // Create a new JSZip instance
+        const zip = new JSZip();
+        
+        // Create the proper directory structure for teleoperator data
+        const dataDir = zip.folder("data");
+        const chunkDir = dataDir?.folder("chunk-000");
+        
+        // Add the parquet file to the proper directory
+        chunkDir?.file("file-000.parquet", parquetUint8Array);
+        
+        // Add videos to the zip with proper directory structure
+        for (const [key, blob] of Object.entries(videoBlobs)) {
+            // Create the directory structure for each video
+            const videoDir = zip.folder(`videos/observation.images.${key}/chunk-000`);
+            // Add the video file
+            videoDir?.file("file-000.mp4", blob);
+        }
+        
+        // Generate the zip file
+        const zipContent = await zip.generateAsync({ type: "blob" });
+        
+        // Create a URL for the zip file
+        const url = URL.createObjectURL(zipContent);
         
         // Create a download link and trigger the download
         const link = document.createElement('a');
         link.href = url;
-        link.download = `lerobot_dataset_${new Date().toISOString().replace(/[:.]/g, '-')}.parquet`;
+        link.download = `lerobot_dataset_${new Date().toISOString().replace(/[:.]/g, '-')}.zip`;
         document.body.appendChild(link);
         link.click();
         
