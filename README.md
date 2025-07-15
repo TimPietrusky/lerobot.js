@@ -14,5 +14,6 @@ npm install @lerobot/web
 
 ## Resources
 
-- **📖 Documentation**: See [`@lerobot/web` README](./packages/web/README.md) for complete API reference
-- **🚀 Live Demo**: Try it online at [huggingface.co/spaces/NERDDISCO/LeRobot.js](https://huggingface.co/spaces/NERDDISCO/LeRobot.js)
+- **LeRobot.js**: [Introduction post on Hugging Face](https://huggingface.co/blog/NERDDISCO/lerobotjs)
+- **Documentation**: See [`@lerobot/web` README](./packages/web/README.md) for complete API reference
+- **Live Demo**: Try it online at [huggingface.co/spaces/NERDDISCO/LeRobot.js](https://huggingface.co/spaces/NERDDISCO/LeRobot.js)
