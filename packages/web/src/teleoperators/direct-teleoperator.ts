@@ -62,6 +62,7 @@ export class DirectTeleoperator extends BaseWebTeleoperator {
    * Move motor to exact position
    */
   async moveMotor(motorName: string, targetPosition: number): Promise<boolean> {
+    const commandSentTimestamp = performance.now();
     const motorConfig = this.motorConfigs.find((m) => m.name === motorName);
     if (!motorConfig) return false;
 
@@ -70,6 +71,8 @@ export class DirectTeleoperator extends BaseWebTeleoperator {
       Math.min(motorConfig.maxPosition, targetPosition)
     );
 
+    const prevPosition = motorConfig.currentPosition;
+
     try {
       await writeMotorPosition(
         this.port,
@@ -77,11 +80,14 @@ export class DirectTeleoperator extends BaseWebTeleoperator {
         Math.round(clampedPosition)
       );
       motorConfig.currentPosition = clampedPosition;
+      const positionChangedTimestamp = performance.now();
 
       // Notify UI of position change
       if (this.onStateUpdate) {
         this.onStateUpdate(this.buildTeleoperationState());
       }
+
+      this.dispatchMotorPositionChanged(motorName, motorConfig, prevPosition, clampedPosition, commandSentTimestamp, positionChangedTimestamp);
 
       return true;
     } catch (error) {

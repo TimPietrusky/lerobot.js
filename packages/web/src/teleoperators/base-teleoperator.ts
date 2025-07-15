@@ -7,16 +7,31 @@ import type { MotorConfig } from "../types/teleoperation.js";
 import type { MotorCommunicationPort } from "../utils/motor-communication.js";
 
 /**
+ * Normalizes a value from one range to another
+ * @param value The value to normalize
+ * @param minVal The minimum value of the original range
+ * @param maxVal The maximum value of the original range
+ * @param minNorm The minimum value of the normalized range
+ * @param maxNorm The maximum value of the normalized range
+ * @returns The normalized value
+ */
+function normalizeValue(value: number, minVal: number, maxVal: number, minNorm: number, maxNorm: number): number {
+  const range = maxVal - minVal;
+  const normRange = maxNorm - minNorm;
+  const normalized = (value - minVal) / range;
+  return normalized * normRange + minNorm;
+}
+
+/**
  * Base interface that all Web teleoperators must implement
  */
-export interface WebTeleoperator {
-  initialize(): Promise<void>;
-  start(): void;
-  stop(): void;
-  disconnect(): Promise<void>;
-  getState(): TeleoperatorSpecificState;
-  onMotorConfigsUpdate(motorConfigs: MotorConfig[]): void;
-  motorConfigs: MotorConfig[];
+export abstract class WebTeleoperator extends EventTarget {
+  abstract initialize(): Promise<void>;
+  abstract start(): void;
+  abstract stop(): void;
+  abstract disconnect(): Promise<void>;
+  abstract getState(): TeleoperatorSpecificState;
+  abstract onMotorConfigsUpdate(motorConfigs: MotorConfig[]): void;
 }
 
 /**
@@ -31,14 +46,21 @@ export type TeleoperatorSpecificState = {
 /**
  * Base abstract class with common functionality for all teleoperators
  */
-export abstract class BaseWebTeleoperator implements WebTeleoperator {
+export abstract class BaseWebTeleoperator extends WebTeleoperator {
   protected port: MotorCommunicationPort;
   public motorConfigs: MotorConfig[] = [];
   protected isActive: boolean = false;
+  protected recordedMotorPositions: any;
+  public isRecording: boolean = false;
 
   constructor(port: MotorCommunicationPort, motorConfigs: MotorConfig[]) {
+    super();
     this.port = port;
     this.motorConfigs = motorConfigs;
+
+    // utility to store all position changes asked for and planned
+    this.recordedMotorPositions = [];
+    this.isRecording = false;
   }
 
   abstract initialize(): Promise<void>;
@@ -53,8 +75,86 @@ export abstract class BaseWebTeleoperator implements WebTeleoperator {
     }
   }
 
+  /**
+   * Starts recording motor positions
+   */
+  startRecording(): void {
+    this.isRecording = true;
+  }
+
+  /**
+   * Stops recording and returns the recorded motor positions
+   * @returns The recorded motor positions
+   */
+  stopRecording(): any {
+    this.isRecording = false;
+    const recordedPositions = this.recordedMotorPositions;
+    this.recordedMotorPositions = [];
+    return recordedPositions;
+  }
+
   onMotorConfigsUpdate(motorConfigs: MotorConfig[]): void {
     this.motorConfigs = motorConfigs;
+  }
+
+  /**
+   * Dispatches a motor position changed event
+   * Gets the motor positions, normalized
+   * 
+   * This follows the guide at https://github.com/huggingface/lerobot/blob/cf86b9300dc83fdad408cfe4787b7b09b55f12cf/src/lerobot/robots/so100_follower/so100_follower.py#L49
+   * Meaning, for everything except gripper, it normalizes the positions to between -100 and 100
+   * and for gripper it normalizes between 0 - 100
+   * 
+   * @param motorName The name of the motor that changed
+   * @param motorConfig The motor configuration
+   * @param previousPosition The previous position of the motor
+   * @param currentPosition The current position of the motor
+   * @param timestamp The timestamp of the event
+   */
+  dispatchMotorPositionChanged(motorName: string, motorConfig: MotorConfig, previousPosition: number, currentPosition: number, commandSentTimestamp: number, positionChangedTimestamp: number): void {
+    let minNormPosition;
+    let maxNormPosition;
+
+    /**
+     * This follows the guide at https://github.com/huggingface/lerobot/blob/cf86b9300dc83fdad408cfe4787b7b09b55f12cf/src/lerobot/robots/so100_follower/so100_follower.py#L49
+     * Meaning, for everything except gripper, it normalizes the positions to between -100 and 100
+     * and for gripper it normalizes between 0 - 100
+     */
+    if(["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"].includes(motorName)) {
+      minNormPosition = -100;
+      maxNormPosition = 100;
+    } else {
+      minNormPosition = 0;
+      maxNormPosition = 100;
+    }
+
+    this.dispatchEvent(new CustomEvent("motor-position-changed", {
+      detail: {
+        motorName,
+        motorConfig,
+        previousPosition,
+        currentPosition,
+        previousNormalizedPosition : normalizeValue(previousPosition, motorConfig.minPosition, motorConfig.maxPosition, minNormPosition, maxNormPosition),
+        currentNormalizedPosition : normalizeValue(currentPosition, motorConfig.minPosition, motorConfig.maxPosition, minNormPosition, maxNormPosition),
+        commandSentTimestamp,
+        positionChangedTimestamp,
+      },
+    }));
+
+
+    // if recording, store the changes
+    if(this.isRecording) {
+      this.recordedMotorPositions.push({
+        motorName,
+        motorConfig,
+        previousPosition,
+        currentPosition,
+        previousNormalizedPosition : normalizeValue(previousPosition, motorConfig.minPosition, motorConfig.maxPosition, minNormPosition, maxNormPosition),
+        currentNormalizedPosition : normalizeValue(currentPosition, motorConfig.minPosition, motorConfig.maxPosition, minNormPosition, maxNormPosition),
+        commandSentTimestamp,
+        positionChangedTimestamp,
+      });
+    }
   }
 
   get isActiveTeleoperator(): boolean {
