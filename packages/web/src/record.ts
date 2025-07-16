@@ -17,6 +17,9 @@ interface LeRobotAction {
  * Represents a row in the LeRobot dataset format
  * Used in the data conversion process for the exported files
  */
+// This interface defines the structure of rows in the exported dataset
+// Used for type checking during the data conversion process
+// @ts-ignore - Used in data transformation logic even if not directly referenced
 interface LeRobotDatasetRow {
     timestamp: number;
     action: LeRobotAction;

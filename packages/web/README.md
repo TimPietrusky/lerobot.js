@@ -363,11 +363,27 @@ recorder.stopRecording();
 // Stop recording
 recorder.stopRecording();
 
-// Export the full dataset including videos
-const zipBlob = await recorder.exportForLeRobot();
+// Export options for different use cases
 
-// Save to file
-const url = URL.createObjectURL(zipBlob);
+// 1. Default - Export and auto-download as ZIP (returns the zip blob)
+const zipBlob = await recorder.exportForLeRobot(); // or 'zip-download'
+
+// 2. Get array of file objects with paths and blob contents
+const blobsArray = await recorder.exportForLeRobot('blobs');
+// Example: blobsArray[0] = { path: "data/chunk-000/file-000.parquet", content: Blob }
+
+// 3. Get zip blob without triggering download
+const zipBlobOnly = await recorder.exportForLeRobot('zip');
+
+// 4. Upload directly to Hugging Face dataset hub
+const uploader = await recorder.exportForLeRobot('huggingface', {
+  username: 'your-hf-username',
+  repoName: 'your-dataset-name',
+  accessToken: 'hf_...' // Your Hugging Face access token
+});
+
+// Manual save to file (for 'zip' format)
+const url = URL.createObjectURL(zipBlobOnly);
 const a = document.createElement('a');
 a.href = url;
 a.download = 'lerobot-dataset.zip';
