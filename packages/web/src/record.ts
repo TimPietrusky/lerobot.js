@@ -6,12 +6,17 @@ import getMetadataInfo from './utils/record/metadataInfo';
 import type { VideoInfo } from './utils/record/metadataInfo';
 import getStats from './utils/record/stats';
 import generateREADME from './utils/record/generateREADME';
+import { LeRobotHFUploader } from './hf_uploader';
 
 // declare a type leRobot action that's basically an array of numbers
 interface LeRobotAction {
     [key: number]: number;
 }
 
+/**
+ * Represents a row in the LeRobot dataset format
+ * Used in the data conversion process for the exported files
+ */
 interface LeRobotDatasetRow {
     timestamp: number;
     action: LeRobotAction;
@@ -762,13 +767,12 @@ export class LeRobotDatasetRecorder {
     }
 
     /**
-     * Exports all the data in a zip file for lerobot format
-     * (caution heavy)
+     * Creates an array of path and blob content objects for the LeRobot dataset
      * 
-     * This converts to apache-arrow by wasm first, then to parquet,
-     * so it is slow. It also includes all recorded videos in the proper directory structure.
+     * @returns An array of {path, content} objects representing the dataset files
+     * @private
      */
-    async exportForLeRobot() {
+    async _exportForLeRobotBlobs() {
         const teleoperatorDataJson = await this.exportTeleoperatorData('json') as any[];
         const parquetUint8Array = await this._exportTeleoperatorDataToBlob(teleoperatorDataJson)
         const videoBlobs = await this.exportMediaData();
@@ -778,54 +782,170 @@ export class LeRobotDatasetRecorder {
         const episodesParquet = await this.getEpisodeStatistics(teleoperatorDataJson);
         const readme = this.generateREADME(JSON.stringify(metadata));
 
-        // Create a new JSZip instance
-        const zip = new JSZip();
+        // Create the blob array with proper paths
+        const blobArray = [
+            {
+                path: "data/chunk-000/file-000.parquet",
+                content: new Blob([parquetUint8Array])
+            },
+            {
+                path: "meta/info.json",
+                content: new Blob([JSON.stringify(metadata, null, 2)], { type: "application/json" })
+            },
+            {
+                path: "meta/stats.json",
+                content: new Blob([JSON.stringify(statistics, null, 2)], { type: "application/json" })
+            },
+            {
+                path: "meta/tasks.parquet",
+                content: new Blob([tasksParquet])
+            },
+            {
+                path: "meta/episodes/chunk-000/file-000.parquet",
+                content: new Blob([episodesParquet])
+            },
+            {
+                path: "README.md",
+                content: new Blob([readme], { type: "text/markdown" })
+            }
+        ];
         
-        // Create the proper directory structure for teleoperator data
-        const dataDir = zip.folder("data");
-        const chunkDir = dataDir?.folder("chunk-000");
-        
-        // Add the parquet file to the proper directory
-        chunkDir?.file("file-000.parquet", parquetUint8Array);
-        
-        // Add videos to the zip with proper directory structure
+        // Add video blobs with proper paths
         for (const [key, blob] of Object.entries(videoBlobs)) {
-            // Create the directory structure for each video
-            const videoDir = zip.folder(`videos/observation.images.${key}/chunk-000`);
-            // Add the video file
-            videoDir?.file("file-000.mp4", blob);
+            blobArray.push({
+                path: `videos/observation.images.${key}/chunk-000/file-000.mp4`,
+                content: blob
+            });
         }
         
-        // Add metadata, statistics, and tasks parquet to the zip
-        const metaDir = zip.folder("meta");
-        metaDir?.file("info.json", JSON.stringify(metadata, null, 2));
-        metaDir?.file("stats.json", JSON.stringify(statistics, null, 2));
-        metaDir?.file("tasks.parquet", tasksParquet);
-        
-        // Add episodes parquet to the zip in meta/episodes/chunk-000/file-000.parquet
-        const episodesDir = metaDir?.folder("episodes")?.folder("chunk-000");
-        episodesDir?.file("file-000.parquet", episodesParquet);
+        return blobArray;
+    }
 
-        // add the README to the top of the zip directory
-        zip?.file("README.md", readme);
+    /**
+     * Creates a ZIP file from the dataset blobs
+     * 
+     * @returns A Blob containing the ZIP file
+     * @private
+     */
+    async _exportForLeRobotZip() {
+        const blobArray = await this._exportForLeRobotBlobs();
+        const zip = new JSZip();
+        
+        // Add all blobs to the zip with their paths
+        for (const item of blobArray) {
+            // Split the path to handle directories
+            const pathParts = item.path.split('/');
+            const fileName = pathParts.pop() || '';
+            let currentFolder = zip;
+            
+            // Create nested folders as needed
+            if (pathParts.length > 0) {
+                for (const part of pathParts) {
+                    currentFolder = currentFolder.folder(part) || currentFolder;
+                }
+            }
+            
+            // Add file to the current folder
+            currentFolder.file(fileName, item.content);
+        }
         
         // Generate the zip file
-        const zipContent = await zip.generateAsync({ type: "blob" });
+        return await zip.generateAsync({ type: "blob" });
+    }
+
+    /**
+     * Uploads the LeRobot dataset to Hugging Face
+     * 
+     * @param username Hugging Face username
+     * @param repoName Repository name for the dataset
+     * @param accessToken Hugging Face access token
+     * @returns The LeRobotHFUploader instance used for upload
+     */
+    async _exportForLeRobotHuggingface(username: string, repoName: string, accessToken: string) {
+        // Create the blobs array for upload
+        const blobArray = await this._exportForLeRobotBlobs();
         
-        // Create a URL for the zip file
-        const url = URL.createObjectURL(zipContent);
+        // Create the uploader
+        const uploader = new LeRobotHFUploader(username, repoName);
         
-        // Create a download link and trigger the download
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `lerobot_dataset_${new Date().toISOString().replace(/[:.]/g, '-')}.zip`;
-        document.body.appendChild(link);
-        link.click();
+        // Convert blobs to File objects for HF uploader
+        const files = blobArray.map(item => {
+            return {
+                path: item.path,
+                content: item.content
+            };
+        });
         
-        // Clean up
-        setTimeout(() => {
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-        }, 100);
+        // Generate a unique reference ID for tracking the upload
+        const referenceId = `lerobot-upload-${Date.now()}`;
+        
+        try {
+            // Start the upload process
+            await uploader.createRepoAndUploadFiles(files, accessToken, referenceId);
+            console.log(`Successfully uploaded dataset to ${username}/${repoName}`);
+            return uploader;
+        } catch (error) {
+            console.error("Error uploading to Hugging Face:", error);
+            throw error;
+        }
+    }
+
+    /**
+     * Exports the LeRobot dataset in various formats
+     * 
+     * @param format The export format - 'blobs', 'zip', 'zip-download', or 'huggingface'
+     * @param options Additional options for specific formats
+     * @param options.username Hugging Face username (required for 'huggingface' format)
+     * @param options.repoName Hugging Face repository name (required for 'huggingface' format)
+     * @param options.accessToken Hugging Face access token (required for 'huggingface' format)
+     * @returns The exported data in the requested format or the uploader instance for 'huggingface' format
+     */
+    async exportForLeRobot(format: 'blobs' | 'zip' | 'zip-download' | 'huggingface' = 'zip-download', options?: {
+        username?: string;
+        repoName?: string;
+        accessToken?: string;
+    }) {
+        switch (format) {
+            case 'blobs':
+                return this._exportForLeRobotBlobs();
+                
+            case 'zip':
+                return this._exportForLeRobotZip();
+                
+            case 'huggingface':
+                // Validate required options for Hugging Face upload
+                if (!options || !options.username || !options.repoName || !options.accessToken) {
+                    throw new Error('Hugging Face upload requires username, repoName, and accessToken options');
+                }
+                
+                return this._exportForLeRobotHuggingface(
+                    options.username,
+                    options.repoName,
+                    options.accessToken
+                );
+                
+            case 'zip-download':
+            default:
+                // Get the zip blob
+                const zipContent = await this._exportForLeRobotZip();
+                
+                // Create a URL for the zip file
+                const url = URL.createObjectURL(zipContent);
+                
+                // Create a download link and trigger the download
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `lerobot_dataset_${new Date().toISOString().replace(/[:.]/g, '-')}.zip`;
+                document.body.appendChild(link);
+                link.click();
+                
+                // Clean up
+                setTimeout(() => {
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                }, 100);
+                
+                return zipContent;
+        }
     }
 }
