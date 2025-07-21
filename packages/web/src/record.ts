@@ -7,6 +7,7 @@ import type { VideoInfo } from './utils/record/metadataInfo';
 import getStats from './utils/record/stats';
 import generateREADME from './utils/record/generateREADME';
 import { LeRobotHFUploader } from './hf_uploader';
+import { LeRobotS3Uploader } from './s3_uploader';
 
 // declare a type leRobot action that's basically an array of numbers
 interface LeRobotAction {
@@ -884,7 +885,7 @@ export class LeRobotDatasetRecorder {
         
         try {
             // Start the upload process
-            await uploader.createRepoAndUploadFiles(files, accessToken, referenceId);
+            uploader.createRepoAndUploadFiles(files, accessToken, referenceId);
             console.log(`Successfully uploaded dataset to ${username}/${repoName}`);
             return uploader;
         } catch (error) {
@@ -894,19 +895,68 @@ export class LeRobotDatasetRecorder {
     }
 
     /**
+     * Uploads the LeRobot dataset to Amazon S3
+     * 
+     * @param bucketName S3 bucket name
+     * @param accessKeyId AWS access key ID
+     * @param secretAccessKey AWS secret access key
+     * @param region AWS region (default: us-east-1)
+     * @param prefix Optional prefix (folder) to upload files to within the bucket
+     * @returns The LeRobotS3Uploader instance used for upload
+     */
+    async _exportForLeRobotS3(bucketName: string, accessKeyId: string, secretAccessKey: string, region: string = "us-east-1", prefix: string = "") {
+        // Create the blobs array for upload
+        const blobArray = await this._exportForLeRobotBlobs();
+        
+        // Create the uploader
+        const uploader = new LeRobotS3Uploader(bucketName, region);
+        
+        // Convert blobs to File objects for S3 uploader
+        const files = blobArray.map(item => {
+            return {
+                path: item.path,
+                content: item.content
+            };
+        });
+        
+        // Generate a unique reference ID for tracking the upload
+        const referenceId = `lerobot-s3-upload-${Date.now()}`;
+        
+        try {
+            // Start the upload process
+            uploader.checkBucketAndUploadFiles(files, accessKeyId, secretAccessKey, prefix, referenceId);
+            console.log(`Successfully uploaded dataset to S3 bucket: ${bucketName}`);
+            return uploader;
+        } catch (error) {
+            console.error("Error uploading to S3:", error);
+            throw error;
+        }
+    }
+
+    /**
      * Exports the LeRobot dataset in various formats
      * 
-     * @param format The export format - 'blobs', 'zip', 'zip-download', or 'huggingface'
+     * @param format The export format - 'blobs', 'zip', 'zip-download', 'huggingface', or 's3'
      * @param options Additional options for specific formats
      * @param options.username Hugging Face username (required for 'huggingface' format)
      * @param options.repoName Hugging Face repository name (required for 'huggingface' format)
      * @param options.accessToken Hugging Face access token (required for 'huggingface' format)
-     * @returns The exported data in the requested format or the uploader instance for 'huggingface' format
+     * @param options.bucketName S3 bucket name (required for 's3' format)
+     * @param options.accessKeyId AWS access key ID (required for 's3' format)
+     * @param options.secretAccessKey AWS secret access key (required for 's3' format)
+     * @param options.region AWS region (optional for 's3' format, default: us-east-1)
+     * @param options.prefix S3 prefix/folder (optional for 's3' format)
+     * @returns The exported data in the requested format or the uploader instance for 'huggingface'/'s3' formats
      */
-    async exportForLeRobot(format: 'blobs' | 'zip' | 'zip-download' | 'huggingface' = 'zip-download', options?: {
+    async exportForLeRobot(format: 'blobs' | 'zip' | 'zip-download' | 'huggingface' | 's3' = 'zip-download', options?: {
         username?: string;
         repoName?: string;
         accessToken?: string;
+        bucketName?: string;
+        accessKeyId?: string;
+        secretAccessKey?: string;
+        region?: string;
+        prefix?: string;
     }) {
         switch (format) {
             case 'blobs':
@@ -925,6 +975,20 @@ export class LeRobotDatasetRecorder {
                     options.username,
                     options.repoName,
                     options.accessToken
+                );
+                
+            case 's3':
+                // Validate required options for S3 upload
+                if (!options || !options.bucketName || !options.accessKeyId || !options.secretAccessKey) {
+                    throw new Error('S3 upload requires bucketName, accessKeyId, and secretAccessKey options');
+                }
+                
+                return this._exportForLeRobotS3(
+                    options.bucketName,
+                    options.accessKeyId,
+                    options.secretAccessKey,
+                    options.region,
+                    options.prefix
                 );
                 
             case 'zip-download':
