@@ -26,6 +26,7 @@ function normalizeValue(value: number, minVal: number, maxVal: number, minNorm: 
  * Base interface that all Web teleoperators must implement
  */
 export abstract class WebTeleoperator extends EventTarget {
+  public motorConfigs: MotorConfig[] = [];
   abstract recordedMotorPositions: any;
   abstract initialize(): Promise<void>;
   abstract start(): void;
