@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { LeRobotDatasetRecorder } from '../../../packages/web/src/record';
+import { LeRobotDatasetRecorder } from '@lerobot/web';
 
 interface LeRobotDatasetRecorderPanelProps {
   recorder: LeRobotDatasetRecorder;

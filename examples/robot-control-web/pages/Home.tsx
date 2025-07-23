@@ -5,7 +5,7 @@ import { PortManager } from "../components/PortManager";
 import { CalibrationPanel } from "../components/CalibrationPanel";
 import { TeleoperationPanel } from "../components/TeleoperationPanel";
 import { isWebSerialSupported } from "@lerobot/web";
-import type { RobotConnection } from "@lerobot/web";
+import type { RobotConnection, SerialPort } from "@lerobot/web";
 
 interface HomeProps {
   connectedRobots: RobotConnection[];

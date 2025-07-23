@@ -14,6 +14,9 @@ importers:
       '@aws-sdk/lib-storage':
         specifier: ^3.850.0
         version: 3.850.0(@aws-sdk/client-s3@3.850.0)
+      '@huggingface/hub':
+        specifier: ^2.4.0
+        version: 2.4.0
       '@lerobot/web':
         specifier: workspace:*
         version: link:packages/web
@@ -551,6 +554,14 @@ packages:
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
+
+  '@huggingface/hub@2.4.0':
+    resolution: {integrity: sha512-8H9uLOIBJNPw6lUV1g/t+7pAVNOhBW5g7CNAOJ0JVkA1QObEb7u0O7vMVkjmu3311SUU39aSx8l1Fgsw586g4g==}
+    engines: {node: '>=18'}
+    hasBin: true
+
+  '@huggingface/tasks@0.19.29':
+    resolution: {integrity: sha512-Mw8/P5o4iW9LkTJw2LedBJH3yJl6mmak8zo/pJbHMO/UH1ZoYQp07WKGv0MTut1CKWuKEAgKeXTfHVpw15O6uw==}
 
   '@isaacs/cliui@8.0.2':
     resolution: {integrity: sha512-O8jcjabXaleOG9DQ0+ARXWZBTfnP4WNAqzuiJK7ll44AmxGKv/J2M4TPjxjY3znBCfvBXFzucm1twdyFybFqEA==}
@@ -3066,6 +3077,12 @@ snapshots:
 
   '@esbuild/win32-x64@0.25.5':
     optional: true
+
+  '@huggingface/hub@2.4.0':
+    dependencies:
+      '@huggingface/tasks': 0.19.29
+
+  '@huggingface/tasks@0.19.29': {}
 
   '@isaacs/cliui@8.0.2':
     dependencies:
