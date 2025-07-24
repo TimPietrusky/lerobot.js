@@ -36,6 +36,7 @@
   ],
   "scripts": {
     "build": "tsc --project tsconfig.build.json",
+    "build:watch": "tsc --project tsconfig.build.json --watch",
     "prepublishOnly": "npm run build",
     "dev": "vitest --watch",
     "test": "vitest run",

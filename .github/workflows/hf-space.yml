@@ -13,27 +13,18 @@ jobs:
           fetch-depth: 0
           lfs: true
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: latest
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 18
-          cache: "pnpm"
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
 
       - name: Update cyberpunk dependency to use published version
         run: |
           # Get the actual version from packages/web/package.json
           WEB_VERSION=$(node -p "require('./packages/web/package.json').version")
           cd examples/cyberpunk-standalone
-          # Replace workspace dependency with published version
-          sed -i 's/"@lerobot\/web": "workspace:\*"/"@lerobot\/web": "^'$WEB_VERSION'"/' package.json
+          # Replace file dependency with published version
+          sed -i 's/"@lerobot\/web": "file:..\/..\/packages\/web"/"@lerobot\/web": "^'$WEB_VERSION'"/' package.json
           echo "Updated cyberpunk package.json to use published version ^$WEB_VERSION"
 
       - name: Prepare README for HF Space

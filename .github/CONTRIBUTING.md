@@ -10,8 +10,8 @@ git clone https://github.com/timpietrusky/lerobot.js.git
 cd lerobot.js
 pnpm install
 
-# Run demo
-pnpm dev
+# Run cyberpunk demo (recommended)
+pnpm example:cyberpunk
 
 # Build packages
 pnpm --filter "@lerobot/web" run build
@@ -20,21 +20,39 @@ pnpm --filter "@lerobot/web" run build
 ## 📦 Package Structure
 
 - **`packages/web/`** - Browser package (`@lerobot/web` on npm)
-- **`examples/robot-control-web/`** - Demo application (deployed to HF Spaces)
+- **`examples/cyberpunk-standalone/`** - Main demo application (standalone)
+- **`examples/iframe-dialog-test/`** - Test application for iframe integration
+- **`examples/test-sequential-operations/`** - Sequential operations test
 - **`src/cli/`** - Node.js CLI tool
-- **`src/lerobot/node/`** - Node.js library
+- **`src/lerobot/node/`** - Node.js library implementation
 
 ## 🔄 Making Changes
 
 ### 1. Development Workflow
 
-```bash
-# Make your changes to packages/web/ or other code
-# Test your changes
-pnpm dev  # for demo
-pnpm --filter "@lerobot/web" run build  # for package
+**For Web Library Changes:**
 
-# Run any relevant tests
+```bash
+cd packages/web
+pnpm dev      # Run tests in watch mode
+pnpm build    # Build the library
+```
+
+**For Example/Demo Changes:**
+
+```bash
+pnpm example:cyberpunk      # Main demo
+pnpm example:iframe-test    # Other examples
+pnpm example:sequential-test
+```
+
+**For CLI Changes:**
+
+```bash
+pnpm cli:find-port     # Test CLI commands
+pnpm cli:calibrate
+pnpm cli:teleoperate
+pnpm build            # Build CLI for distribution
 ```
 
 ### 2. Creating a Changeset
