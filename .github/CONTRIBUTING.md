@@ -12,36 +12,18 @@ pnpm install
 
 ### Library + Demo Development (Recommended)
 
-**Terminal 1:**
-
-```bash
-cd packages/web
-pnpm build:watch
-```
-
-**Terminal 2:**
-
 ```bash
 cd examples/cyberpunk-standalone
-npm run dev
+pnpm dev
 ```
 
-Edit `packages/web/src/` → see changes instantly in demo.
+Edit `packages/web/src/` → see changes instantly in demo via Vite hot reload.
 
 ### Library Only
 
 ```bash
 cd packages/web
-pnpm build    # Build once
-pnpm dev      # Tests in watch mode
-```
-
-### Examples Only
-
-```bash
-pnpm example:cyberpunk
-pnpm example:iframe-test
-pnpm example:sequential-test
+pnpm dev
 ```
 
 ## Releases
@@ -52,7 +34,10 @@ For `@lerobot/web` changes:
 pnpm changeset
 ```
 
-Select package, version type (patch/minor/major), add description.
+- Select package, version type (patch/minor/major), add description
+- Commit the changeset file
+- When merged to main, [GitHub Actions](.github/workflows/release.yml) creates a Release PR
+- Merge the Release PR → automatic npm publish
 
 ## Code Standards
 

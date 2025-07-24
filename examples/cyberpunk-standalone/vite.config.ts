@@ -8,6 +8,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@lerobot/web": path.resolve(__dirname, "../../packages/web/src"),
     },
   },
 });
