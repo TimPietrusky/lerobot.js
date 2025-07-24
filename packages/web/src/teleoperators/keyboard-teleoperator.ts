@@ -171,7 +171,7 @@ export class KeyboardTeleoperator extends BaseWebTeleoperator {
    *
    * Keep it simple - this works!
    */
-  private updateMotorPositions(): void {
+  private async updateMotorPositions(): Promise<void> {
     const now = Date.now();
 
     // Clear timed-out keys
@@ -219,25 +219,40 @@ export class KeyboardTeleoperator extends BaseWebTeleoperator {
       );
     }
 
+    const prevMotorConfigs = structuredClone(this.motorConfigs);
+    const commandSentTimestamp = performance.now();
+
+
     // Send motor commands and update positions
-    Object.entries(targetPositions).forEach(([motorName, targetPosition]) => {
+    for (const [motorName, targetPosition] of Object.entries(targetPositions)) {
       const motorConfig = this.motorConfigs.find((m) => m.name === motorName);
-      if (motorConfig && targetPosition !== motorConfig.currentPosition) {
-        writeMotorPosition(
-          this.port,
-          motorConfig.id,
-          Math.round(targetPosition)
-        )
-          .then(() => {
-            motorConfig.currentPosition = targetPosition;
-          })
-          .catch((error) => {
-            console.warn(
-              `Failed to write motor ${motorConfig.id} position:`,
-              error
-            );
-          });
+      if (motorConfig && targetPosition !== motorConfig.currentPosition) {        
+        try {
+          await writeMotorPosition(
+            this.port,
+            motorConfig.id,
+            Math.round(targetPosition)
+          );
+          
+          motorConfig.currentPosition = targetPosition;
+        } catch (error) {
+          console.warn(
+            `Failed to write motor ${motorConfig.id} position:`,
+            error
+          );
+        }
       }
-    });
+    }
+
+
+    const positionChangedTimestamp = performance.now();
+
+    // Dispatch event for motor position change
+    this.dispatchMotorPositionChanged(
+      prevMotorConfigs,
+      this.motorConfigs,
+      commandSentTimestamp, 
+      positionChangedTimestamp
+    );
   }
 }
