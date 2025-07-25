@@ -15,7 +15,6 @@ import {
   writeHardwarePositionLimits,
 } from "./utils/motor-calibration.js";
 import { createSO100Config } from "./robots/so100_config.js";
-import type { RobotConnection } from "./types/robot-connection.js";
 import type { RobotHardwareConfig } from "./types/robot-config.js";
 import type {
   CalibrateConfig,

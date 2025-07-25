@@ -22,6 +22,7 @@ import {
 } from "@lerobot/web";
 import { getUnifiedRobotData } from "@/lib/unified-storage";
 import VirtualKey from "@/components/VirtualKey";
+import { Recorder } from "@/components/recorder";
 
 interface TeleoperationViewProps {
   robot: RobotConnection;
@@ -104,7 +105,7 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
   }, [robot.serialNumber]);
 
   // Lazy initialization function - only connects when user wants to start
-  const initializeTeleoperation = async () => {
+  const initializeTeleoperation = useCallback(async () => {
     if (!robot || !robot.robotType) {
       return false;
     }
@@ -165,7 +166,7 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
       });
       return false;
     }
-  };
+  }, [robot, robot.robotType, calibrationData, toast]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -349,12 +350,18 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
     const realMotorConfigs = teleopState?.motorConfigs || [];
     const now = Date.now();
 
-    // If we have real motor configs, use them with local position overrides when recent
+    // If we have real motor configs, use them with local position overrides when appropriate
     if (realMotorConfigs.length > 0) {
       return realMotorConfigs.map((motor) => {
         const localData = localMotorPositions[motor.name];
-        // Use local position only if it's very recent (within 100ms), otherwise use hardware position
-        const useLocalPosition = localData && now - localData.timestamp < 100;
+        
+        // Use local position if it exists and either:
+        // 1. It's very recent (within 500ms) OR
+        // 2. The hardware position is not yet close to our requested position
+        const isRecent = localData && now - localData.timestamp < 500;
+        const isHardwareNotCaughtUp = localData && Math.abs(motor.currentPosition - localData.position) > 5;
+        const useLocalPosition = localData && (isRecent || isHardwareNotCaughtUp);
+        
         return {
           ...motor,
           currentPosition: useLocalPosition
@@ -368,7 +375,12 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
     return DEFAULT_MOTOR_CONFIGS.map((motor) => {
       const calibratedMotor = calibrationData?.[motor.name];
       const localData = localMotorPositions[motor.name];
-      const useLocalPosition = localData && now - localData.timestamp < 100;
+      // Use local position if it exists and either:
+      // 1. It's very recent (within 500ms) OR
+      // 2. We don't have a hardware position yet that's close to our requested position
+      const isRecent = localData && now - localData.timestamp < 500;
+      const isHardwareNotCaughtUp = localData && Math.abs(motor.currentPosition - localData.position) > 5;
+      const useLocalPosition = localData && (isRecent || isHardwareNotCaughtUp);
 
       return {
         ...motor,
@@ -392,7 +404,17 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
   const keyStates = teleopState?.keyStates || {};
   const controls = SO100_KEYBOARD_CONTROLS;
 
+  // Memoize teleoperators array to prevent unnecessary re-renders of the Recorder component
+  const memoizedTeleoperators = useMemo(() => {
+    if (!keyboardProcessRef.current || !directProcessRef.current) return [];
+    return [
+      keyboardProcessRef.current?.teleoperator,
+      directProcessRef.current?.teleoperator
+    ].filter(Boolean);
+  }, [keyboardProcessRef.current, directProcessRef.current]);
+
   return (
+    <>
     <Card className="border-0 rounded-none">
       <div className="p-4 border-b border-white/10">
         <div className="flex items-center justify-between">
@@ -719,5 +741,11 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
         </div>
       </div>
     </Card>
+    
+    {/* Robot Movement Recorder */}
+    {isInitialized && keyboardProcessRef.current && directProcessRef.current && (
+      <Recorder teleoperators={memoizedTeleoperators} />
+    )}
+    </>
   );
 }

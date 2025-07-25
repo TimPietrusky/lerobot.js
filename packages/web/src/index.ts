@@ -58,3 +58,7 @@ export {
   SO100_KEYBOARD_CONTROLS,
 } from "./robots/so100_config.js";
 export { KEYBOARD_TELEOPERATOR_DEFAULTS } from "./teleoperators/index.js";
+
+// Record
+export { LeRobotDatasetRecorder } from "./record.js";
+export { LeRobotHFUploader } from "./hf_uploader.js";
