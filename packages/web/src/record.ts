@@ -55,14 +55,18 @@ export class LeRobotDatasetRecorder {
         taskDescription: string = "Default task description"
     ) {
         this.teleoperators = teleoperators;
-        this.videoStreams = videoStreams;
         this.mediaRecorders = {};
         this.videoChunks = {};
         this.videoBlobs = {};
+        this.videoStreams = {};
         this.teleoperatorData = [];
         this._isRecording = false;
         this.fps = fps;
         this.taskDescription = taskDescription;
+
+        for(const [key, stream] of Object.entries(videoStreams)) {
+            this.addVideoStream(key, stream);
+        }
     }
 
     get isRecording() : boolean {
@@ -75,6 +79,7 @@ export class LeRobotDatasetRecorder {
      * @param stream The media stream to record from
      */
     addVideoStream(key: string, stream: MediaStream) {
+        console.log("Adding video stream", key);
         if (this._isRecording) {
             throw new Error("Cannot add video streams while recording");
         }
@@ -87,6 +92,9 @@ export class LeRobotDatasetRecorder {
             mimeType: 'video/webm;codecs=vp9', // High quality codec
             videoBitsPerSecond: 5000000 // 5 Mbps for good quality
         });
+
+        // add a video chunk array for this stream
+        this.videoChunks[key] = [];
     }
     
     /**
@@ -110,27 +118,24 @@ export class LeRobotDatasetRecorder {
         // Start recording video streams
         Object.entries(this.videoStreams).forEach(([key, stream]) => {
             // Create a media recorder for this stream
-            try {
-                const mediaRecorder = new MediaRecorder(stream, {
-                    mimeType: 'video/webm;codecs=vp9', // High quality codec
-                    videoBitsPerSecond: 5000000 // 5 Mbps for good quality
-                });
-                
-                // Handle data available events
-                mediaRecorder.ondataavailable = (event) => {
-                    if (event.data && event.data.size > 0) {
-                        this.videoChunks[key].push(event.data);
-                    }
-                };
-                
-                // Save the recorder and start recording
-                this.mediaRecorders[key] = mediaRecorder;
-                mediaRecorder.start(1000); // Capture in 1-second chunks
-                
-                console.log(`Started recording video stream: ${key}`);
-            } catch (error) {
-                console.error(`Failed to start recording for stream ${key}:`, error);
-            }
+            const mediaRecorder = new MediaRecorder(stream, {
+                mimeType: 'video/webm;codecs=vp9', // High quality codec
+                videoBitsPerSecond: 5000000 // 5 Mbps for good quality
+            });
+            
+            // Handle data available events
+            mediaRecorder.ondataavailable = (event) => {
+                console.log("data available for", key);
+                if (event.data && event.data.size > 0) {
+                    this.videoChunks[key].push(event.data);
+                }
+            };
+            
+            // Save the recorder and start recording
+            this.mediaRecorders[key] = mediaRecorder;
+            mediaRecorder.start(1000); // Capture in 1-second chunks
+            
+            console.log(`Started recording video stream: ${key}`);
         });
     }
 
