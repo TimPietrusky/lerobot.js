@@ -58,9 +58,7 @@ export class LeRobotHFUploader extends EventTarget {
         this.dispatchEvent(new CustomEvent("repoCreated", { detail: this._repoDesignation }));
 
         const uploadPromises : Promise<void>[] = [];
-        for(const file of files){
-            uploadPromises.push(this.uploadFileWithProgress([file], accessToken, referenceId));
-        }
+        uploadPromises.push(this.uploadFilesWithProgress(files, accessToken, referenceId));
 
         await Promise.all(uploadPromises);
     }
@@ -72,7 +70,7 @@ export class LeRobotHFUploader extends EventTarget {
      * @param accessToken The access token for huggingface
      * @param referenceId The reference id for the upload, to track it (optional)
      */
-    async uploadFileWithProgress(files : FileArray, accessToken : string, referenceId : string = "") {
+    async uploadFilesWithProgress(files : FileArray, accessToken : string, referenceId : string = "") {
         for await (const progressEvent of hub.uploadFilesWithProgress({
             repo: this._repoDesignation,
             accessToken: accessToken,

@@ -304,16 +304,15 @@ export function Recorder({ teleoperators }: RecorderProps) {
       // Generate a unique repository name
       const repoName = `lerobot-recording-${Date.now()}`;
       
-      await recorderRef.current.exportForLeRobot('huggingface', {
-        username: 'user', // This would typically come from the HF API
+      const uploader =await recorderRef.current.exportForLeRobot('huggingface', {
         repoName,
         accessToken: huggingfaceApiKey
       });
 
-      toast({
-        title: "Upload Complete",
-        description: `Dataset uploaded to HuggingFace repository: ${repoName}`,
+      uploader.addEventListener("progress", (event : any) => {
+        console.log(event);
       });
+      
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to upload to HuggingFace";
       toast({

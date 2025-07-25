@@ -178,7 +178,7 @@ export class LeRobotDatasetRecorder {
                 recorder.onstop = () => {
                     // Combine all chunks into a single blob
                     const chunks = this.videoChunks[key] || [];
-                    const blob = new Blob(chunks, { type: 'video/webm' });
+                    const blob = new Blob(chunks, { type: 'video/mp4' });
                     this.videoBlobs[key] = blob;
                     resolve();
                 };
@@ -946,7 +946,7 @@ export class LeRobotDatasetRecorder {
      * 
      * @param format The export format - 'blobs', 'zip', 'zip-download', 'huggingface', or 's3'
      * @param options Additional options for specific formats
-     * @param options.username Hugging Face username (required for 'huggingface' format)
+     * @param options.username Hugging Face username (if not provided for "huggingface" format, it will use the default username)
      * @param options.repoName Hugging Face repository name (required for 'huggingface' format)
      * @param options.accessToken Hugging Face access token (required for 'huggingface' format)
      * @param options.bucketName S3 bucket name (required for 's3' format)
@@ -973,10 +973,16 @@ export class LeRobotDatasetRecorder {
             case 'zip':
                 return this._exportForLeRobotZip();
                 
-            case 'huggingface':
+            case 'huggingface':                
                 // Validate required options for Hugging Face upload
-                if (!options || !options.username || !options.repoName || !options.accessToken) {
-                    throw new Error('Hugging Face upload requires username, repoName, and accessToken options');
+                if (!options || !options.repoName || !options.accessToken) {
+                    throw new Error('Hugging Face upload requires repoName, and accessToken options');
+                }
+
+                if (!options.username) {
+                    const hub = await import("@huggingface/hub");
+                    const {name: username} = await hub.whoAmI({accessToken: options.accessToken});
+                    options.username = username;
                 }
                 
                 return this._exportForLeRobotHuggingface(
