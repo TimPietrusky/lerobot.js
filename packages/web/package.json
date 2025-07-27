@@ -67,6 +67,8 @@
     "@huggingface/hub": "^2.4.0",
     "apache-arrow": "^21.0.0",
     "jszip": "^3.10.1",
-    "parquet-wasm": "^0.6.1"
+    "parquet-wasm": "^0.6.1",
+    "three": "^0.178.0",
+    "urdf-loader": "^0.12.6"
   }
 }

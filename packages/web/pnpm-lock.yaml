@@ -26,6 +26,15 @@ importers:
       parquet-wasm:
         specifier: ^0.6.1
         version: 0.6.1
+      three:
+        specifier: ^0.178.0
+        version: 0.178.0
+      typescript:
+        specifier: '>=4.5.0'
+        version: 5.8.3
+      urdf-loader:
+        specifier: ^0.12.6
+        version: 0.12.6(three@0.178.0)
     devDependencies:
       '@vitest/ui':
         specifier: ^2.0.0
@@ -1337,6 +1346,9 @@ packages:
     resolution: {integrity: sha512-iK5/YhZxq5GO5z8wb0bY1317uDF3Zjpha0QFFLA8/trAoiLbQD0HUbMesEaxyzUgDxi2QlcbM8IvqOlEjgoXBA==}
     engines: {node: '>=12.17'}
 
+  three@0.178.0:
+    resolution: {integrity: sha512-ybFIB0+x8mz0wnZgSGy2MO/WCO6xZhQSZnmfytSPyNpM0sBafGRVhdaj+erYh5U+RhQOAg/eXqw5uVDiM2BjhQ==}
+
   tinybench@2.9.0:
     resolution: {integrity: sha512-0+DUvqWMValLmha6lr4kD8iAMK1HzV0/aKnCtWb9v9641TnP/MFb7Pc2bxoxQjTXAErryXVgUOfv2YqNllqGeg==}
 
@@ -1374,6 +1386,11 @@ packages:
   tslib@2.8.1:
     resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
 
+  typescript@5.8.3:
+    resolution: {integrity: sha512-p1diW6TqL9L07nNxvRMM7hMMw4c5XOo/1ibL4aAIGmSAt9slTE1Xgw5KWuof2uTOvCg9BY7ZRi+GaF+7sfgPeQ==}
+    engines: {node: '>=14.17'}
+    hasBin: true
+
   typical@7.3.0:
     resolution: {integrity: sha512-ya4mg/30vm+DOWfBg4YK3j2WD6TWtRkCbasOJr40CseYENzCUby/7rIvXA99JGsQHeNxLbnXdyLLxKSv3tauFw==}
     engines: {node: '>=12.17'}
@@ -1384,6 +1401,11 @@ packages:
   universalify@0.2.0:
     resolution: {integrity: sha512-CJ1QgKmNg3CwvAv/kOFmtnEN05f0D/cn9QntgNOQlQF9dgvVTHj3t+8JPdjqawCHk7V/KA+fbUqzZ9XWhcqPUg==}
     engines: {node: '>= 4.0.0'}
+
+  urdf-loader@0.12.6:
+    resolution: {integrity: sha512-EwpgOCPe6Tep2+MXoo/r13keHaKQXMcM+4s9+jX0NRxNS/QSNuP5JPdk5AIgWEoEB43AkEj9Vk+Nr53NkXgSbA==}
+    peerDependencies:
+      three: '>=0.152.0'
 
   url-parse@1.5.10:
     resolution: {integrity: sha512-WypcfiRhfeUP9vvF0j6rw0J3hrWrw6iZv3+22h6iRMJ/8z1Tj6XfLP4DsUix5MhMPnXpiHDoKyoZ/bdCkwBCiQ==}
@@ -3155,6 +3177,8 @@ snapshots:
       array-back: 6.2.2
       wordwrapjs: 5.1.0
 
+  three@0.178.0: {}
+
   tinybench@2.9.0: {}
 
   tinyexec@0.3.2: {}
@@ -3185,11 +3209,17 @@ snapshots:
 
   tslib@2.8.1: {}
 
+  typescript@5.8.3: {}
+
   typical@7.3.0: {}
 
   undici-types@7.8.0: {}
 
   universalify@0.2.0: {}
+
+  urdf-loader@0.12.6(three@0.178.0):
+    dependencies:
+      three: 0.178.0
 
   url-parse@1.5.10:
     dependencies:
