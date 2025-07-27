@@ -1,4 +1,11 @@
 import { useState, useEffect, useRef } from "react";
+import {
+  Routes,
+  Route,
+  useNavigate,
+  useParams,
+  useLocation,
+} from "react-router-dom";
 import { ChevronLeft } from "lucide-react";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
@@ -27,19 +34,15 @@ import {
 } from "@/lib/unified-storage";
 
 function App() {
-  const [view, setView] = useState<
-    "dashboard" | "calibrating" | "teleoperating"
-  >("dashboard");
   const [robots, setRobots] = useState<RobotConnection[]>([]);
-  const [selectedRobot, setSelectedRobot] = useState<RobotConnection | null>(
-    null
-  );
   const [editingRobot, setEditingRobot] = useState<RobotConnection | null>(
     null
   );
   const [isConnecting, setIsConnecting] = useState(false);
   const hardwareSectionRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   // Check browser support
   const isSupported = isWebSerialSupported();
@@ -231,8 +234,7 @@ function App() {
       return;
     }
 
-    setSelectedRobot(robot);
-    setView("calibrating");
+    navigate(`/device/${robot.serialNumber}/calibrate`);
   };
 
   const handleTeleoperate = (robot: RobotConnection) => {
@@ -245,122 +247,57 @@ function App() {
       return;
     }
 
-    setSelectedRobot(robot);
-    setView("teleoperating");
+    navigate(`/device/${robot.serialNumber}/control`);
   };
 
-  const handleCloseSubView = () => {
-    setSelectedRobot(null);
-    setView("dashboard");
+  const handleBackToDashboard = () => {
+    navigate("/");
   };
 
   const scrollToHardware = () => {
     hardwareSectionRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  const renderView = () => {
-    switch (view) {
-      case "calibrating":
-        return selectedRobot && <CalibrationView robot={selectedRobot} />;
-      case "teleoperating":
-        return selectedRobot && <TeleoperationView robot={selectedRobot} />;
-      case "dashboard":
-      default:
-        return (
-          <div className="space-y-20">
-            <DeviceDashboard
-              robots={robots}
-              onCalibrate={handleCalibrate}
-              onTeleoperate={handleTeleoperate}
-              onRemove={handleRemoveRobot}
-              onEdit={setEditingRobot}
-              onFindNew={handleFindNewRobots}
-              isConnecting={isConnecting}
-              onScrollToHardware={scrollToHardware}
-            />
-            <div>
-              <div className="mb-6">
-                <h2 className="text-3xl font-bold font-mono tracking-wider mb-2 uppercase">
-                  install
-                </h2>
-                <p className="text-sm text-muted-foreground font-mono">
-                  Choose your preferred development environment
-                </p>
-              </div>
-              <SetupCards />
-            </div>
-            <DocsSection />
-            <RoadmapSection />
-            <div ref={hardwareSectionRef}>
-              <HardwareSupportSection />
-            </div>
-          </div>
-        );
-    }
-  };
-
-  const PageHeader = () => {
-    return (
-      <div className="flex items-center justify-between mb-12">
-        <div className="flex items-center gap-4">
-          <div>
-            {view === "calibrating" && selectedRobot ? (
-              <h1 className="font-mono text-4xl font-bold tracking-wider">
-                <span className="text-muted-foreground uppercase">
-                  calibrate:
-                </span>{" "}
-                <span
-                  className="text-primary text-glitch uppercase"
-                  data-text={selectedRobot.robotId}
-                >
-                  {selectedRobot.robotId?.toUpperCase()}
-                </span>
-              </h1>
-            ) : view === "teleoperating" && selectedRobot ? (
-              <h1 className="font-mono text-4xl font-bold tracking-wider">
-                <span className="text-muted-foreground uppercase">
-                  teleoperate:
-                </span>{" "}
-                <span
-                  className="text-primary text-glitch uppercase"
-                  data-text={selectedRobot.robotId}
-                >
-                  {selectedRobot.robotId?.toUpperCase()}
-                </span>
-              </h1>
-            ) : (
-              <h1
-                className="font-mono text-4xl font-bold text-primary tracking-wider text-glitch uppercase"
-                data-text="dashboard"
-              >
-                DASHBOARD
-              </h1>
-            )}
-            <div className="h-6 flex items-center">
-              {view !== "dashboard" ? (
-                <button
-                  onClick={handleCloseSubView}
-                  className="flex items-center gap-2 text-sm text-muted-foreground font-mono hover:text-primary transition-colors"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                  <span className="uppercase">back to dashboard</span>
-                </button>
-              ) : (
-                <p className="text-sm text-muted-foreground font-mono">{""} </p>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   return (
     <div className="flex flex-col min-h-screen font-sans bg-gray-200 dark:bg-background">
       <Header />
       <main className="flex-grow container mx-auto py-12 px-4 md:px-6">
-        <PageHeader />
-        {renderView()}
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <DashboardPage
+                robots={robots}
+                onCalibrate={handleCalibrate}
+                onTeleoperate={handleTeleoperate}
+                onRemove={handleRemoveRobot}
+                onEdit={setEditingRobot}
+                onFindNew={handleFindNewRobots}
+                isConnecting={isConnecting}
+                onScrollToHardware={scrollToHardware}
+                hardwareSectionRef={hardwareSectionRef}
+              />
+            }
+          />
+          <Route
+            path="/device/:serialNumber/calibrate"
+            element={
+              <CalibratePage
+                robots={robots}
+                onBackToDashboard={handleBackToDashboard}
+              />
+            }
+          />
+          <Route
+            path="/device/:serialNumber/control"
+            element={
+              <ControlPage
+                robots={robots}
+                onBackToDashboard={handleBackToDashboard}
+              />
+            }
+          />
+        </Routes>
         <EditRobotDialog
           robot={editingRobot}
           isOpen={!!editingRobot}
@@ -370,6 +307,167 @@ function App() {
       </main>
       <Footer />
       <Toaster />
+    </div>
+  );
+}
+
+// Dashboard Page Component
+function DashboardPage({
+  robots,
+  onCalibrate,
+  onTeleoperate,
+  onRemove,
+  onEdit,
+  onFindNew,
+  isConnecting,
+  onScrollToHardware,
+  hardwareSectionRef,
+}: {
+  robots: RobotConnection[];
+  onCalibrate: (robot: RobotConnection) => void;
+  onTeleoperate: (robot: RobotConnection) => void;
+  onRemove: (robot: RobotConnection) => void;
+  onEdit: (robot: RobotConnection | null) => void;
+  onFindNew: () => void;
+  isConnecting: boolean;
+  onScrollToHardware: () => void;
+  hardwareSectionRef: React.RefObject<HTMLDivElement>;
+}) {
+  return (
+    <div>
+      <PageHeader />
+      <div className="space-y-20">
+        <DeviceDashboard
+          robots={robots}
+          onCalibrate={onCalibrate}
+          onTeleoperate={onTeleoperate}
+          onRemove={onRemove}
+          onEdit={onEdit}
+          onFindNew={onFindNew}
+          isConnecting={isConnecting}
+          onScrollToHardware={onScrollToHardware}
+        />
+        <div>
+          <div className="mb-6">
+            <h2 className="text-3xl font-bold font-mono tracking-wider mb-2 uppercase">
+              install
+            </h2>
+            <p className="text-sm text-muted-foreground font-mono">
+              Choose your preferred development environment
+            </p>
+          </div>
+          <SetupCards />
+        </div>
+        <DocsSection />
+        <RoadmapSection />
+        <div ref={hardwareSectionRef}>
+          <HardwareSupportSection />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Calibrate Page Component
+function CalibratePage({
+  robots,
+  onBackToDashboard,
+}: {
+  robots: RobotConnection[];
+  onBackToDashboard: () => void;
+}) {
+  const { serialNumber } = useParams<{ serialNumber: string }>();
+  const selectedRobot = robots.find(
+    (robot) => robot.serialNumber === serialNumber
+  );
+
+  if (!selectedRobot) {
+    return (
+      <div>
+        <PageHeader onBackToDashboard={onBackToDashboard} />
+        <div className="text-center py-20">
+          <p className="text-muted-foreground">
+            Device not found or not connected.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <PageHeader onBackToDashboard={onBackToDashboard} />
+      <CalibrationView robot={selectedRobot} />
+    </div>
+  );
+}
+
+// Control Page Component
+function ControlPage({
+  robots,
+  onBackToDashboard,
+}: {
+  robots: RobotConnection[];
+  onBackToDashboard: () => void;
+}) {
+  const { serialNumber } = useParams<{ serialNumber: string }>();
+  const selectedRobot = robots.find(
+    (robot) => robot.serialNumber === serialNumber
+  );
+
+  if (!selectedRobot) {
+    return (
+      <div>
+        <PageHeader onBackToDashboard={onBackToDashboard} />
+        <div className="text-center py-20">
+          <p className="text-muted-foreground">
+            Device not found or not connected.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <PageHeader onBackToDashboard={onBackToDashboard} />
+      <TeleoperationView robot={selectedRobot} />
+    </div>
+  );
+}
+
+// Page Header Component
+function PageHeader({ onBackToDashboard }: { onBackToDashboard?: () => void }) {
+  const location = useLocation();
+  const isDashboard = location.pathname === "/";
+
+  return (
+    <div className="mb-12">
+      <div className="py-6 border-b border-border">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-4xl font-mono font-bold tracking-wider uppercase">
+              LeRobot.js
+            </h1>
+            <p className="text-sm text-muted-foreground font-mono mt-1">
+              state-of-the-art AI for real-world robotics in JavaScript
+            </p>
+          </div>
+          <div className="h-6 flex items-center">
+            {!isDashboard && onBackToDashboard ? (
+              <button
+                onClick={onBackToDashboard}
+                className="flex items-center gap-2 text-sm text-muted-foreground font-mono hover:text-primary transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                <span className="uppercase">back to dashboard</span>
+              </button>
+            ) : (
+              <p className="text-sm text-muted-foreground font-mono">{""} </p>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

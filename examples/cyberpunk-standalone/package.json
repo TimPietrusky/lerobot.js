@@ -54,6 +54,7 @@
     "react-dom": "^19",
     "react-hook-form": "^7.54.1",
     "react-resizable-panels": "^2.1.7",
+    "react-router-dom": "^7.7.1",
     "react-syntax-highlighter": "^15.6.1",
     "recharts": "2.15.0",
     "sonner": "^1.7.1",
