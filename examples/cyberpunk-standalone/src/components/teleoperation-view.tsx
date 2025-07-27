@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { Power, PowerOff, Keyboard } from "lucide-react";
+import { Power, PowerOff, Keyboard, Box } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -20,9 +20,15 @@ import {
   type TeleoperateConfig,
   type RobotConnection,
 } from "@lerobot/web";
+// Import the LeRobotSO100 class directly from the package
+import { LeRobotSO100 } from "@lerobot/web";
 import { getUnifiedRobotData } from "@/lib/unified-storage";
 import VirtualKey from "@/components/VirtualKey";
 import { Recorder } from "@/components/recorder";
+import { Canvas } from "@react-three/fiber";
+import { Physics } from "@react-three/cannon";
+import * as THREE from "three";
+import { OrbitControls } from "@react-three/drei";
 
 interface TeleoperationViewProps {
   robot: RobotConnection;
@@ -74,7 +80,52 @@ const DEFAULT_MOTOR_CONFIGS = [
   { name: "gripper", currentPosition: 2048, minPosition: 0, maxPosition: 4095 },
 ];
 
+// URDF Robot Component to display the robot model
+function URDFRobotModel({ robotInstance }: { robotInstance: LeRobotSO100 | null }) {
+  const [urdfRobot, setUrdfRobot] = useState<any>(null);
+
+  useEffect(() => {
+    if (robotInstance) {
+      // Load the URDF model
+      robotInstance.initialize().then(() => {
+        setUrdfRobot(robotInstance.getURDF());
+        robotInstance.setJoints({
+          Elbow: Math.PI/2,
+          Jaw: Math.PI/2,
+          Pitch: Math.PI/2,
+          Rotation: Math.PI/2,
+          Wrist_Pitch: Math.PI/2,
+          Wrist_Roll: Math.PI/2
+        });
+      }).catch((error: Error) => {
+        console.error("Failed to load URDF model:", error);
+      });
+    }
+  }, [robotInstance]);
+
+  // If the URDF model is not loaded yet, show a loading message
+  if (!urdfRobot) {
+    return (
+      <mesh>
+        <boxGeometry args={[0.5, 0.5, 0.5]} />
+        <meshStandardMaterial color="gray" />
+      </mesh>
+    );
+  }
+
+  // Return the URDF model
+  return (
+    <primitive 
+      object={urdfRobot} 
+      position={[0, 0, 0]} 
+      rotation={[-Math.PI/2, 0, 0]}
+      scale={15}
+    />
+  );
+}
+
 export function TeleoperationView({ robot }: TeleoperationViewProps) {
+  const [robotInstance, setRobotInstance] = useState<LeRobotSO100 | null>(null);
   const [teleopState, setTeleopState] = useState<TeleoperationState>({
     isActive: false,
     motorConfigs: [],
@@ -103,6 +154,14 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
     // Return undefined if no calibration data - let library handle defaults
     return undefined;
   }, [robot.serialNumber]);
+
+  // Initialize robot instance
+  useEffect(() => {
+    if (robot && robot.robotType) {
+      const newRobotInstance = new LeRobotSO100();
+      setRobotInstance(newRobotInstance);
+    }
+  }, [robot]);
 
   // Lazy initialization function - only connects when user wants to start
   const initializeTeleoperation = useCallback(async () => {
@@ -738,6 +797,36 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
               </div>
             </div>
           </div>
+        </div>
+      </div>
+    </Card>
+    
+    {/* 3D Robot Viewer */}
+    <Card className="border-white/10 bg-black/50 backdrop-blur-md overflow-hidden mb-4">
+      <div className="p-4">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold flex items-center gap-2">
+            <Box className="w-5 h-5" />
+            <span>Robot 3D View</span>
+          </h3>
+        </div>
+        <div className="w-full h-[400px] rounded-md overflow-hidden bg-black/30">
+          <Canvas shadows camera={{ position: [1, 1, 1], fov: 60 }}>
+            <ambientLight intensity={0.5} />
+            <directionalLight
+              position={[5, 5, 5]}
+              intensity={1}
+              castShadow
+              shadow-mapSize-width={2048}
+              shadow-mapSize-height={2048}
+            />
+            <Physics>
+              <URDFRobotModel robotInstance={robotInstance} />
+            </Physics>
+            <OrbitControls enablePan={true} enableZoom={true} enableRotate={true} />
+            <gridHelper args={[10, 10]} />
+            <axesHelper args={[5]} />
+          </Canvas>
         </div>
       </div>
     </Card>

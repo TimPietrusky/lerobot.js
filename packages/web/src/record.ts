@@ -15,18 +15,21 @@ interface LeRobotAction {
 }
 
 /**
- * Represents a row in the LeRobot dataset format
- * Used in the data conversion process for the exported files
+ * Base interface for LeRobot dataset rows with common fields
  */
-// This interface defines the structure of rows in the exported dataset
-// Used for type checking during the data conversion process
-// @ts-ignore - Used in data transformation logic even if not directly referenced
-interface LeRobotDatasetRow {
+interface NonIndexedLeRobotDatasetRow {
     timestamp: number;
     action: LeRobotAction;
     "observation.state": LeRobotAction;
     episode_index: number;
     task_index: number;
+}
+
+/**
+ * Represents a complete row in the LeRobot dataset format after indexing
+ * Used in the final exported dataset
+ */
+interface LeRobotDatasetRow extends NonIndexedLeRobotDatasetRow {
     frame_index: number;
     index: number;
 }
@@ -43,7 +46,7 @@ export class LeRobotDatasetRecorder {
     mediaRecorders: { [key: string]: MediaRecorder };
     videoChunks: { [key: string]: Blob[] };
     videoBlobs: { [key: string]: Blob };
-    teleoperatorData: any;
+    teleoperatorData: LeRobotDatasetRow[][];
     private _isRecording: boolean;
     fps: number;
     taskDescription: string;
@@ -163,12 +166,44 @@ export class LeRobotDatasetRecorder {
         
         this._isRecording = false;
         
-        // Stop teleoperator recording and collect data
-        this.teleoperators.forEach((teleoperator) => {
-            this.teleoperatorData.push(...teleoperator.stopRecording());
+
+        const teleoperatorDatas = []
+
+        // Combine the teleoperator data one by one
+        this.teleoperators.forEach((teleoperator, i) => {
+            this.teleoperatorData.push(teleoperator.stopRecording());
         });
 
-        console.log("total frames: ", this.teleoperatorData.length);
+        const combinedEpisodeData : NonIndexedLeRobotDatasetRow[][] = []
+
+        teleoperatorDatas.forEach((teleoperatorData : any[], i) => {
+            // for each episode in every teleoperator, combine the episode data
+            teleoperatorData.forEach((roughEpData, i) => {
+                const episode = this._convertToLeRobotDataFormatFrames(roughEpData)
+
+                // make it into an array if it is empty
+                combinedEpisodeData[i] = combinedEpisodeData[i]||[];
+
+                // combine the frames
+                combinedEpisodeData[i] = combinedEpisodeData[i].concat(episode)
+
+                // sort all frames in the episode
+                combinedEpisodeData[i].sort((a : NonIndexedLeRobotDatasetRow, b : NonIndexedLeRobotDatasetRow) => a.timestamp - b.timestamp)
+            })
+        })
+
+
+        const interpolatedCombinedEpisodeData : LeRobotDatasetRow[][] = []
+        
+        let lastFrame = 0;
+
+        combinedEpisodeData.forEach((episode, i) => {
+            // convert all the combinedEpisodeData to have proper indexes and proper spacing
+            interpolatedCombinedEpisodeData[i] = this._interpolateAndCompleteLerobotData(this.fps, episode, lastFrame);
+            lastFrame += interpolatedCombinedEpisodeData[i].length
+        })
+
+        this.teleoperatorData = this.teleoperatorData.concat(interpolatedCombinedEpisodeData);
         
         // Stop all media recorders
         const stopPromises = Object.entries(this.mediaRecorders).map(([key, recorder]) => {
@@ -298,22 +333,22 @@ export class LeRobotDatasetRecorder {
      * 
      * to match lerobot dataset requirements
      */
-    async _interpolateAndCompleteLerobotData(fps : number, roughData : any[]){
-        const interpolatedData : any[] = [];
-        let minTimestamp = roughData[0].timestamp;
-        let maxTimestamp = roughData[roughData.length - 1].timestamp;
+    _interpolateAndCompleteLerobotData(fps : number, frameData : NonIndexedLeRobotDatasetRow[], lastFrameIndex : number) : LeRobotDatasetRow[]{
+        const interpolatedData : LeRobotDatasetRow[] = [];
+        let minTimestamp = frameData[0].timestamp;
+        let maxTimestamp = frameData[frameData.length - 1].timestamp;
         const numFrames = Math.floor((maxTimestamp - minTimestamp) * fps);
         let currentEpisode = 0;
         let frameIndex = 0;
 
-        console.log("frames", numFrames, roughData[0].timestamp, roughData[roughData.length - 1].timestamp, fps)
+        console.log("frames before interpolation", numFrames, frameData[0].timestamp, frameData[frameData.length - 1].timestamp, fps)
 
         for(let i = 0; i < numFrames; i++){
             const timestamp = i / fps;
-            const closestIndex = this._findClosestTimestampBefore(roughData, timestamp);
+            const closestIndex = this._findClosestTimestampBefore(frameData, timestamp);
             const nextIndex = closestIndex + 1;
-            const closestItemData = roughData[closestIndex];
-            const nextItemData = roughData[nextIndex];
+            const closestItemData = frameData[closestIndex];
+            const nextItemData = frameData[nextIndex];
             const action = this._actionInterpolatate(closestItemData.action, nextItemData.action, closestItemData.timestamp, nextItemData.timestamp, timestamp);
             const observation_state = this._actionInterpolatate(closestItemData["observation.state"], nextItemData["observation.state"], closestItemData.timestamp, nextItemData.timestamp, timestamp);
 
@@ -329,7 +364,7 @@ export class LeRobotDatasetRecorder {
                 episode_index: closestItemData.episode_index,
                 task_index: closestItemData.task_index,
                 frame_index : frameIndex,
-                index: i
+                index: lastFrameIndex + i
             });
 
             frameIndex++;
@@ -339,9 +374,32 @@ export class LeRobotDatasetRecorder {
     }
 
     /**
-     * Processes the data into lerobot format
+     * converts all the frames of a recording into lerobot dataset frame style
+     * 
+     * NOTE : This does not interpolate the data, you are only working with raw data
+     * that is called by the teleop when things are actively "changing"
+     * @param episodeRough 
      */
-    async convertActionDataToLeRobotFormat(){
+    _convertToLeRobotDataFormatFrames(episodeRough : any[]) : NonIndexedLeRobotDatasetRow[]{
+        const properFormatFrames : NonIndexedLeRobotDatasetRow[] = [];
+
+        const firstTimestamp = episodeRough[0].commandSentTimestamp;
+        for(let i=0; i<episodeRough.length; i++){
+            const frameRough  = episodeRough[i]
+
+            properFormatFrames.push({
+                timestamp: frameRough.commandSentTimestamp - firstTimestamp, //timestamps start from 0
+                action: frameRough.previousMotorConfigsNormalized,
+                "observation.state": frameRough.newMotorConfigsNormalized,
+                episode_index: frameRough.episodeIndex,
+                task_index: frameRough.taskIndex
+            });
+        }
+
+        return properFormatFrames
+    }
+
+    /*getRoughData(){
         if(this._isRecording) throw new Error("This can only be called, after recording has stopped!");
 
         // sort the data by timestamp first
@@ -362,8 +420,16 @@ export class LeRobotDatasetRecorder {
             });
         }
 
+        return roughData;
+    }*/
+
+    /**
+     * Processes the data into lerobot format
+     *
+    async convertActionDataToLeRobotFormat(){
+        const roughData = this.getRoughData();
         return this._interpolateAndCompleteLerobotData(this.fps, roughData);
-    }
+    }*/
 
     /**
      * Converts teleoperator data to a parquet blob
@@ -410,14 +476,14 @@ export class LeRobotDatasetRecorder {
      * @param format The format to return the data in ('json' or 'blob')
      * @returns Either an array of data objects or a Uint8Array blob depending on format
      */
-    async exportTeleoperatorData(format: 'json' | 'blob' = 'json') {
+    exportTeleoperatorData(format: 'json' | 'blob' = 'json') {
         if(this._isRecording) throw new Error("This can only be called after recording has stopped!");
-        const data = await this.convertActionDataToLeRobotFormat();
+        const data = this.teleoperatorData;
         
         if (format === 'json') {
             return data;
         } else {
-            return this._exportTeleoperatorDataToBlob(data);
+            return this._exportTeleoperatorDataToBlob(data.flat());
         }
     }
 
@@ -791,7 +857,7 @@ export class LeRobotDatasetRecorder {
      */
     async _exportForLeRobotBlobs() {
         const teleoperatorDataJson = await this.exportTeleoperatorData('json') as any[];
-        const parquetUint8Array = await this._exportTeleoperatorDataToBlob(teleoperatorDataJson)
+        const parquetUint8Array = await this._exportTeleoperatorDataToBlob(teleoperatorDataJson.flat())
         const videoBlobs = await this.exportMediaData();
         const metadata = await this.generateMetadata(teleoperatorDataJson);
         const statistics = await this.getStatistics(teleoperatorDataJson);

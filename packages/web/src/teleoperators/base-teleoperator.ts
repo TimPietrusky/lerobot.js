@@ -64,6 +64,7 @@ export abstract class BaseWebTeleoperator extends WebTeleoperator {
   public isRecording: boolean = false;
   public recordingTaskIndex : number;
   public recordingEpisodeIndex : number;
+  public recordedMotorPositionEpisodes : any[];
 
   constructor(port: MotorCommunicationPort, motorConfigs: MotorConfig[]) {
     super();
@@ -72,6 +73,10 @@ export abstract class BaseWebTeleoperator extends WebTeleoperator {
 
     // utility to store all position changes asked for and planned
     this.recordedMotorPositions = [];
+
+    // like recorded motor positions, but now with episode-wise data
+    this.recordedMotorPositionEpisodes = []
+
     this.isRecording = false;
     this.recordingTaskIndex = 0;
     this.recordingEpisodeIndex = 0;
@@ -98,6 +103,9 @@ export abstract class BaseWebTeleoperator extends WebTeleoperator {
 
   setEpisodeIndex(index: number): void {
     this.recordingEpisodeIndex = index;
+
+    // create a new empty array at that position on the array
+    this.recordedMotorPositionEpisodes[this.recordingEpisodeIndex] = []
   }
 
   setTaskIndex(index: number): void {
@@ -112,7 +120,11 @@ export abstract class BaseWebTeleoperator extends WebTeleoperator {
     this.isRecording = false;
     const recordedPositions = this.recordedMotorPositions;
     this.recordedMotorPositions = [];
-    return recordedPositions;
+
+    const recordedEpisodes = this.recordedMotorPositionEpisodes;
+    this.recordedMotorPositionEpisodes = []
+
+    return recordedEpisodes;
   }
 
   onMotorConfigsUpdate(motorConfigs: MotorConfig[]): void {
@@ -184,10 +196,9 @@ export abstract class BaseWebTeleoperator extends WebTeleoperator {
       },
     }));
 
-    //console.log("this was called", this.isRecording, "---")
     // if recording, store the changes
     if(this.isRecording) {
-      this.recordedMotorPositions.push({
+      const data = {
         previousMotorConfigs : prevMotorConfigs,
         newMotorConfigs,
         previousMotorConfigsNormalized : this.normalizeMotorConfigs(prevMotorConfigs),
@@ -196,7 +207,12 @@ export abstract class BaseWebTeleoperator extends WebTeleoperator {
         positionChangedTimestamp,
         episodeIndex: this.recordingEpisodeIndex,
         taskIndex: this.recordingTaskIndex,
-      });
+      }
+
+      this.recordedMotorPositions.push(data);
+
+      const episodes = this.recordedMotorPositionEpisodes[this.recordingEpisodeIndex]
+      episodes.push(data)
     }
   }
 
