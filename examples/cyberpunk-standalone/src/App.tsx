@@ -396,7 +396,10 @@ function CalibratePage({
 
   return (
     <div>
-      <PageHeader onBackToDashboard={onBackToDashboard} />
+      <PageHeader
+        onBackToDashboard={onBackToDashboard}
+        selectedRobot={selectedRobot}
+      />
       <CalibrationView robot={selectedRobot} />
     </div>
   );
@@ -430,29 +433,64 @@ function ControlPage({
 
   return (
     <div>
-      <PageHeader onBackToDashboard={onBackToDashboard} />
+      <PageHeader
+        onBackToDashboard={onBackToDashboard}
+        selectedRobot={selectedRobot}
+      />
       <TeleoperationView robot={selectedRobot} />
     </div>
   );
 }
 
 // Page Header Component
-function PageHeader({ onBackToDashboard }: { onBackToDashboard?: () => void }) {
+function PageHeader({
+  onBackToDashboard,
+  selectedRobot,
+}: {
+  onBackToDashboard?: () => void;
+  selectedRobot?: RobotConnection | null;
+}) {
   const location = useLocation();
   const isDashboard = location.pathname === "/";
+  const isCalibrating = location.pathname.includes("/calibrate");
+  const isTeleoperating = location.pathname.includes("/control");
 
   return (
-    <div className="mb-12">
-      <div className="py-6 border-b border-border">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-4xl font-mono font-bold tracking-wider uppercase">
-              LeRobot.js
+    <div className="flex items-center justify-between mb-12">
+      <div className="flex items-center gap-4">
+        <div>
+          {isCalibrating && selectedRobot ? (
+            <h1 className="font-mono text-4xl font-bold tracking-wider">
+              <span className="text-muted-foreground uppercase">
+                calibrate:
+              </span>{" "}
+              <span
+                className="text-primary text-glitch uppercase"
+                data-text={selectedRobot.robotId}
+              >
+                {selectedRobot.robotId?.toUpperCase()}
+              </span>
             </h1>
-            <p className="text-sm text-muted-foreground font-mono mt-1">
-              state-of-the-art AI for real-world robotics in JavaScript
-            </p>
-          </div>
+          ) : isTeleoperating && selectedRobot ? (
+            <h1 className="font-mono text-4xl font-bold tracking-wider">
+              <span className="text-muted-foreground uppercase">
+                teleoperate:
+              </span>{" "}
+              <span
+                className="text-primary text-glitch uppercase"
+                data-text={selectedRobot.robotId}
+              >
+                {selectedRobot.robotId?.toUpperCase()}
+              </span>
+            </h1>
+          ) : (
+            <h1
+              className="font-mono text-4xl font-bold text-primary tracking-wider text-glitch uppercase"
+              data-text="dashboard"
+            >
+              DASHBOARD
+            </h1>
+          )}
           <div className="h-6 flex items-center">
             {!isDashboard && onBackToDashboard ? (
               <button
