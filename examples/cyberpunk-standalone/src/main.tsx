@@ -1,5 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { BrowserRouter } from "react-router-dom";
 import "./global.css";
 import App from "./App";
 import { ThemeProvider } from "./components/theme-provider";
@@ -11,13 +12,15 @@ setTimeout(() => {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <ThemeProvider
-      attribute="class"
-      defaultTheme="system"
-      enableSystem
-      disableTransitionOnChange
-    >
-      <App />
-    </ThemeProvider>
+    <BrowserRouter>
+      <ThemeProvider
+        attribute="class"
+        defaultTheme="system"
+        enableSystem
+        disableTransitionOnChange
+      >
+        <App />
+      </ThemeProvider>
+    </BrowserRouter>
   </StrictMode>
 );
