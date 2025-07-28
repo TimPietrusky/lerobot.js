@@ -220,7 +220,7 @@ export class KeyboardTeleoperator extends BaseWebTeleoperator {
     }
 
     const prevMotorConfigs = structuredClone(this.motorConfigs);
-    const commandSentTimestamp = performance.now();
+    const commandSentTimestamp = performance.now()/1000;
 
 
     // Send motor commands and update positions
@@ -245,7 +245,7 @@ export class KeyboardTeleoperator extends BaseWebTeleoperator {
     }
 
 
-    const positionChangedTimestamp = performance.now();
+    const positionChangedTimestamp = performance.now()/1000;
 
     // Dispatch event for motor position change
     this.dispatchMotorPositionChanged(

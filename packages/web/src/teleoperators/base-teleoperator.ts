@@ -27,7 +27,6 @@ function normalizeValue(value: number, minVal: number, maxVal: number, minNorm: 
  */
 export abstract class WebTeleoperator extends EventTarget {
   public motorConfigs: MotorConfig[] = [];
-  abstract recordedMotorPositions: any;
   abstract initialize(): Promise<void>;
   abstract start(): void;
   abstract stop(): void;
@@ -60,7 +59,6 @@ export abstract class BaseWebTeleoperator extends WebTeleoperator {
   protected port: MotorCommunicationPort;
   public motorConfigs: MotorConfig[] = [];
   protected isActive: boolean = false;
-  public recordedMotorPositions: any;
   public isRecording: boolean = false;
   public recordingTaskIndex : number;
   public recordingEpisodeIndex : number;
@@ -71,10 +69,7 @@ export abstract class BaseWebTeleoperator extends WebTeleoperator {
     this.port = port;
     this.motorConfigs = motorConfigs;
 
-    // utility to store all position changes asked for and planned
-    this.recordedMotorPositions = [];
-
-    // like recorded motor positions, but now with episode-wise data
+    // store episode positions
     this.recordedMotorPositionEpisodes = []
 
     this.isRecording = false;
@@ -99,6 +94,12 @@ export abstract class BaseWebTeleoperator extends WebTeleoperator {
    */
   startRecording(): void {
     this.isRecording = true;
+
+    // send a frame with the current view and actions, with the same
+    // observation.state and action.state
+    // when starting to record, to ensure that the complete
+    // data is present until the end
+    this.dispatchMotorPositionChanged(this.motorConfigs, this.motorConfigs, performance.now()/1000, performance.now()/1000)
   }
 
   setEpisodeIndex(index: number): void {
@@ -117,13 +118,13 @@ export abstract class BaseWebTeleoperator extends WebTeleoperator {
    * @returns The recorded motor positions
    */
   stopRecording(): any {
-    this.isRecording = false;
-    const recordedPositions = this.recordedMotorPositions;
-    this.recordedMotorPositions = [];
+    // add an episode in the end while stopping recording to ensure that
+    // we have data till the end time
+    this.dispatchMotorPositionChanged(this.motorConfigs, this.motorConfigs, performance.now()/1000, performance.now()/1000)
 
+    this.isRecording = false;
     const recordedEpisodes = this.recordedMotorPositionEpisodes;
     this.recordedMotorPositionEpisodes = []
-
     return recordedEpisodes;
   }
 
@@ -208,8 +209,6 @@ export abstract class BaseWebTeleoperator extends WebTeleoperator {
         episodeIndex: this.recordingEpisodeIndex,
         taskIndex: this.recordingTaskIndex,
       }
-
-      this.recordedMotorPositions.push(data);
 
       const episodes = this.recordedMotorPositionEpisodes[this.recordingEpisodeIndex]
       episodes.push(data)

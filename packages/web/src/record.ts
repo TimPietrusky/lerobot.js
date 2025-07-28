@@ -14,10 +14,34 @@ interface LeRobotAction {
     [key: number]: number;
 }
 
+export class LeRobotEpisode {
+    // we assume that the frames are ordered
+    public frames : NonIndexedLeRobotDatasetRow[]
+
+    constructor(frames? : NonIndexedLeRobotDatasetRow[]){
+        this.frames = frames || []
+    }
+
+    /**
+     * the time difference between the first and last frame, in milliseconds
+     */
+    get timespan(){
+        const firstFrame = this.frames.at(0);
+        const lastFrame = this.frames.at(-1);
+        if(!this.frames || !lastFrame || !firstFrame) throw Error("frames should be present");
+
+        return lastFrame.timestamp - firstFrame.timestamp;
+    }
+
+    get length(){
+        return this.frames.length
+    }
+}
+
 /**
  * Base interface for LeRobot dataset rows with common fields
  */
-interface NonIndexedLeRobotDatasetRow {
+export interface NonIndexedLeRobotDatasetRow {
     timestamp: number;
     action: LeRobotAction;
     "observation.state": LeRobotAction;
@@ -29,7 +53,7 @@ interface NonIndexedLeRobotDatasetRow {
  * Represents a complete row in the LeRobot dataset format after indexing
  * Used in the final exported dataset
  */
-interface LeRobotDatasetRow extends NonIndexedLeRobotDatasetRow {
+export interface LeRobotDatasetRow extends NonIndexedLeRobotDatasetRow {
     frame_index: number;
     index: number;
 }
@@ -46,7 +70,7 @@ export class LeRobotDatasetRecorder {
     mediaRecorders: { [key: string]: MediaRecorder };
     videoChunks: { [key: string]: Blob[] };
     videoBlobs: { [key: string]: Blob };
-    teleoperatorData: LeRobotDatasetRow[][];
+    teleoperatorData: LeRobotEpisode[];
     private _isRecording: boolean;
     fps: number;
     taskDescription: string;
@@ -92,8 +116,7 @@ export class LeRobotDatasetRecorder {
         
         // Initialize MediaRecorder for this stream
         this.mediaRecorders[key] = new MediaRecorder(stream, {
-            mimeType: 'video/webm;codecs=vp9', // High quality codec
-            videoBitsPerSecond: 5000000 // 5 Mbps for good quality
+            mimeType: 'video/mp4'
         });
 
         // add a video chunk array for this stream
@@ -122,8 +145,7 @@ export class LeRobotDatasetRecorder {
         Object.entries(this.videoStreams).forEach(([key, stream]) => {
             // Create a media recorder for this stream
             const mediaRecorder = new MediaRecorder(stream, {
-                mimeType: 'video/webm;codecs=vp9', // High quality codec
-                videoBitsPerSecond: 5000000 // 5 Mbps for good quality
+                mimeType: 'video/mp4'
             });
             
             // Handle data available events
@@ -167,11 +189,11 @@ export class LeRobotDatasetRecorder {
         this._isRecording = false;
         
 
-        const teleoperatorDatas = []
+        const teleoperatorDatas : any[] = []
 
         // Combine the teleoperator data one by one
         this.teleoperators.forEach((teleoperator, i) => {
-            this.teleoperatorData.push(teleoperator.stopRecording());
+            teleoperatorDatas.push(teleoperator.stopRecording());
         });
 
         const combinedEpisodeData : NonIndexedLeRobotDatasetRow[][] = []
@@ -193,18 +215,25 @@ export class LeRobotDatasetRecorder {
         })
 
 
-        const interpolatedCombinedEpisodeData : LeRobotDatasetRow[][] = []
+        const interpolatedCombinedEpisodeData : LeRobotEpisode[] = []
         
-        let lastFrame = 0;
+        let lastFrameNumber = 0;
 
-        combinedEpisodeData.forEach((episode, i) => {
+        combinedEpisodeData.forEach((frames, i) => {
             // convert all the combinedEpisodeData to have proper indexes and proper spacing
-            interpolatedCombinedEpisodeData[i] = this._interpolateAndCompleteLerobotData(this.fps, episode, lastFrame);
-            lastFrame += interpolatedCombinedEpisodeData[i].length
+            const episode = new LeRobotEpisode()
+            episode.frames = this._interpolateAndCompleteLerobotData(this.fps, frames, lastFrameNumber);
+            interpolatedCombinedEpisodeData.push(episode)
+            lastFrameNumber += episode.length
+
+            console.log("teleoperator episode length", episode.length)
         })
 
+        console.log("teleoperatorDatas.length", teleoperatorDatas.length)
+        console.log("combinedEpisodeData.length", combinedEpisodeData.length)
         this.teleoperatorData = this.teleoperatorData.concat(interpolatedCombinedEpisodeData);
         
+        console.log("teleoperator data length:", this.teleoperatorData.length)
         // Stop all media recorders
         const stopPromises = Object.entries(this.mediaRecorders).map(([key, recorder]) => {
             return new Promise<void>((resolve) => {
@@ -335,16 +364,29 @@ export class LeRobotDatasetRecorder {
      */
     _interpolateAndCompleteLerobotData(fps : number, frameData : NonIndexedLeRobotDatasetRow[], lastFrameIndex : number) : LeRobotDatasetRow[]{
         const interpolatedData : LeRobotDatasetRow[] = [];
-        let minTimestamp = frameData[0].timestamp;
-        let maxTimestamp = frameData[frameData.length - 1].timestamp;
-        const numFrames = Math.floor((maxTimestamp - minTimestamp) * fps);
+        const minTimestamp = frameData[0].timestamp;
+        const maxTimestamp = frameData[frameData.length - 1].timestamp;
+        const timeDifference = maxTimestamp - minTimestamp;
+        const numFrames = Math.floor(timeDifference * fps);
+        const firstFrame = frameData[0]
         let currentEpisode = 0;
-        let frameIndex = 0;
+
 
         console.log("frames before interpolation", numFrames, frameData[0].timestamp, frameData[frameData.length - 1].timestamp, fps)
 
-        for(let i = 0; i < numFrames; i++){
-            const timestamp = i / fps;
+        interpolatedData.push({
+            timestamp: firstFrame.timestamp,
+            action: this.convertActionToArray(firstFrame.action),
+            "observation.state": this.convertActionToArray(firstFrame["observation.state"]),
+            episode_index: firstFrame.episode_index,
+            task_index: firstFrame.task_index,
+            frame_index : 0,
+            index: lastFrameIndex
+        })
+
+        // start from 1 as the first frame is pushed already (see above)
+        for(let i = 1; i < numFrames; i++){
+            const timestamp = (i / fps)
             const closestIndex = this._findClosestTimestampBefore(frameData, timestamp);
             const nextIndex = closestIndex + 1;
             const closestItemData = frameData[closestIndex];
@@ -352,22 +394,15 @@ export class LeRobotDatasetRecorder {
             const action = this._actionInterpolatate(closestItemData.action, nextItemData.action, closestItemData.timestamp, nextItemData.timestamp, timestamp);
             const observation_state = this._actionInterpolatate(closestItemData["observation.state"], nextItemData["observation.state"], closestItemData.timestamp, nextItemData.timestamp, timestamp);
 
-            if(closestItemData.episode_index > currentEpisode){
-                currentEpisode = closestItemData.episode_index;
-                frameIndex = 0;
-            }
-
             interpolatedData.push({
                 timestamp: timestamp,
                 action: this.convertActionToArray(action),
                 "observation.state": this.convertActionToArray(observation_state),
                 episode_index: closestItemData.episode_index,
                 task_index: closestItemData.task_index,
-                frame_index : frameIndex,
+                frame_index : i,
                 index: lastFrameIndex + i
             });
-
-            frameIndex++;
         }
 
         return interpolatedData;
@@ -388,7 +423,7 @@ export class LeRobotDatasetRecorder {
             const frameRough  = episodeRough[i]
 
             properFormatFrames.push({
-                timestamp: frameRough.commandSentTimestamp - firstTimestamp, //timestamps start from 0
+                timestamp: frameRough.commandSentTimestamp - firstTimestamp, // so timestamps start from 0, and are in seconds
                 action: frameRough.previousMotorConfigsNormalized,
                 "observation.state": frameRough.newMotorConfigsNormalized,
                 episode_index: frameRough.episodeIndex,
@@ -434,41 +469,58 @@ export class LeRobotDatasetRecorder {
     /**
      * Converts teleoperator data to a parquet blob
      * @private
-     * @returns A Uint8Array containing the parquet data
+     * @returns Array of objects containing parquet file content and path
      */
-    private async _exportTeleoperatorDataToBlob(data: any[]): Promise<Uint8Array> {
-        const { tableFromArrays, vectorFromArray } = arrow;
+    private async _exportTeleoperatorDataToBlob(episodes: LeRobotEpisode[]): Promise<{content: Blob, path: string}[]> {
+        // combine all the frames
+        let data : NonIndexedLeRobotDatasetRow[] = [];
+        const episodeBlobs : any[] = []
 
-        const timestamps = data.map((row: any) => row.timestamp);
-        const actions = data.map((row: any) => row.action);
-        const observationStates = data.map((row: any) => row["observation.state"]);
-        const episodeIndexes = data.map((row: any) => row.episode_index);
-        const taskIndexes = data.map((row: any) => row.task_index);
-        const frameIndexes = data.map((row: any) => row.frame_index);
-        const indexes = data.map((row: any) => row.index);
+        for(let i=0; i<episodes.length; i++){
+            const episode = episodes[i]
+            data = episode.frames
+            const { tableFromArrays, vectorFromArray } = arrow;
 
-        const table = tableFromArrays({
-            timestamp: timestamps,
-            // @ts-ignore, this works, idk why
-            action: vectorFromArray(actions, new arrow.List(new arrow.Field("item", new arrow.Float32()))),
-            // @ts-ignore, this works, idk why
-            "observation.state": vectorFromArray(observationStates, new arrow.List(new arrow.Field("item", new arrow.Float32()))),
-            episode_index: episodeIndexes,
-            task_index: taskIndexes,
-            frame_index: frameIndexes,
-            index: indexes
-        });
+            const timestamps = data.map((row: any) => row.timestamp);
+            const actions = data.map((row: any) => row.action);
+            const observationStates = data.map((row: any) => row["observation.state"]);
+            const episodeIndexes = data.map((row: any) => row.episode_index);
+            const taskIndexes = data.map((row: any) => row.task_index);
+            const frameIndexes = data.map((row: any) => row.frame_index);
+            const indexes = data.map((row: any) => row.index);
 
-        const wasmUrl = "https://cdn.jsdelivr.net/npm/parquet-wasm@0.6.1/esm/parquet_wasm_bg.wasm";
-        const initWasm = parquet.default;
-        await initWasm(wasmUrl);
+            const table = tableFromArrays({
+                timestamp: timestamps,
+                // @ts-ignore, this works, idk why
+                action: vectorFromArray(actions, new arrow.List(new arrow.Field("item", new arrow.Float32()))),
+                // @ts-ignore, this works, idk why
+                "observation.state": vectorFromArray(observationStates, new arrow.List(new arrow.Field("item", new arrow.Float32()))),
+                episode_index: episodeIndexes,
+                task_index: taskIndexes,
+                frame_index: frameIndexes,
+                index: indexes
+            });
 
-        const wasmTable = parquet.Table.fromIPCStream(arrow.tableToIPC(table, "stream"));
-        const writerProperties = new parquet.WriterPropertiesBuilder()
-            .setCompression(parquet.Compression.ZSTD)
-            .build();
-        
-        return parquet.writeParquet(wasmTable, writerProperties);
+            const wasmUrl = "https://cdn.jsdelivr.net/npm/parquet-wasm@0.6.1/esm/parquet_wasm_bg.wasm";
+            const initWasm = parquet.default;
+            await initWasm(wasmUrl);
+
+            const wasmTable = parquet.Table.fromIPCStream(arrow.tableToIPC(table, "stream"));
+            const writerProperties = new parquet.WriterPropertiesBuilder()
+                .setCompression(parquet.Compression.UNCOMPRESSED)
+                .build();
+            
+            const parquetUint8Array = parquet.writeParquet(wasmTable, writerProperties);
+            const numpadded = i.toString().padStart(6, "0")
+            const content = new Blob([parquetUint8Array])
+
+            episodeBlobs.push({
+                content, path: `data/chunk-000/episode_${numpadded}.parquet`
+            })
+            
+        }
+
+        return episodeBlobs
     }
 
     /**
@@ -483,7 +535,7 @@ export class LeRobotDatasetRecorder {
         if (format === 'json') {
             return data;
         } else {
-            return this._exportTeleoperatorDataToBlob(data.flat());
+            return this._exportTeleoperatorDataToBlob(data);
         }
     }
 
@@ -501,7 +553,6 @@ export class LeRobotDatasetRecorder {
      * @returns Metadata object for the LeRobot dataset
      */
     async generateMetadata(data : any[]): Promise<any> {
-        
         // Calculate total episodes, frames, and tasks
         let total_episodes = 0;
         const total_frames = data.length;
@@ -598,7 +649,7 @@ export class LeRobotDatasetRecorder {
         
         // Set compression properties
         const writerProperties = new parquet.WriterPropertiesBuilder()
-            .setCompression(parquet.Compression.ZSTD)
+            .setCompression(parquet.Compression.UNCOMPRESSED)
             .build();
         
         // Write the Parquet file
@@ -838,7 +889,7 @@ export class LeRobotDatasetRecorder {
         
         // Set compression properties
         const writerProperties = new parquet.WriterPropertiesBuilder()
-            .setCompression(parquet.Compression.ZSTD)
+            .setCompression(parquet.Compression.UNCOMPRESSED)
             .build();
         
         // Write the Parquet file
@@ -857,7 +908,7 @@ export class LeRobotDatasetRecorder {
      */
     async _exportForLeRobotBlobs() {
         const teleoperatorDataJson = await this.exportTeleoperatorData('json') as any[];
-        const parquetUint8Array = await this._exportTeleoperatorDataToBlob(teleoperatorDataJson.flat())
+        const parquetEpisodeDataFiles = await this._exportTeleoperatorDataToBlob(teleoperatorDataJson)
         const videoBlobs = await this.exportMediaData();
         const metadata = await this.generateMetadata(teleoperatorDataJson);
         const statistics = await this.getStatistics(teleoperatorDataJson);
@@ -867,10 +918,7 @@ export class LeRobotDatasetRecorder {
 
         // Create the blob array with proper paths
         const blobArray = [
-            {
-                path: "data/chunk-000/file-000.parquet",
-                content: new Blob([parquetUint8Array])
-            },
+            ...parquetEpisodeDataFiles,
             {
                 path: "meta/info.json",
                 content: new Blob([JSON.stringify(metadata, null, 2)], { type: "application/json" })
@@ -896,7 +944,7 @@ export class LeRobotDatasetRecorder {
         // Add video blobs with proper paths
         for (const [key, blob] of Object.entries(videoBlobs)) {
             blobArray.push({
-                path: `videos/observation.images.${key}/chunk-000/file-000.mp4`,
+                path: `videos/chunk-000/observation.images.${key}/episode_000000.mp4`,
                 content: blob
             });
         }

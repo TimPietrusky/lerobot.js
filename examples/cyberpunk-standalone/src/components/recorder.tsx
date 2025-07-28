@@ -31,7 +31,8 @@ import {
   Camera,
   Trash2,
 } from "lucide-react";
-import { LeRobotDatasetRecorder } from "@lerobot/web";
+import { LeRobotDatasetRecorder, LeRobotDatasetRow, NonIndexedLeRobotDatasetRow, LeRobotEpisode } from "@lerobot/web";
+import { TeleoperatorEpisodesView } from "./teleoperator-episodes-view";
 
 interface RecorderProps {
   teleoperators: any[];
@@ -47,13 +48,14 @@ interface Episode {
   status: "complete" | "recording" | "pending";
 }
 
+
+
 export function Recorder({
   teleoperators,
   robot,
   onNeedsTeleoperation,
 }: RecorderProps) {
   const [isRecording, setIsRecording] = useState(false);
-  const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [currentEpisode, setCurrentEpisode] = useState(0);
   const [huggingfaceApiKey, setHuggingfaceApiKey] = useState("");
   const [cameraName, setCameraName] = useState("");
@@ -128,17 +130,6 @@ export function Recorder({
       setIsRecording(true);
       setHasRecordedFrames(true);
 
-      // Add a new episode to the list
-      setEpisodes((prev) => [
-        ...prev,
-        {
-          id: currentEpisode,
-          frames: 0,
-          duration: "00:00",
-          status: "recording",
-        },
-      ]);
-
       toast({
         title: "Recording Started",
         description: `Episode ${currentEpisode} is now recording`,
@@ -162,20 +153,6 @@ export function Recorder({
     try {
       const result = await recorderRef.current.stopRecording();
       setIsRecording(false);
-
-      // Update the episode status
-      setEpisodes((prev) =>
-        prev.map((ep) =>
-          ep.id === currentEpisode
-            ? {
-                ...ep,
-                status: "complete",
-                frames: result.teleoperatorData.length,
-                duration: formatDuration(result.teleoperatorData.length / 30), // Assuming 30fps
-              }
-            : ep
-        )
-      );
 
       toast({
         title: "Recording Stopped",
@@ -214,12 +191,8 @@ export function Recorder({
     }
 
     if (recorderRef.current) {
-      // @ts-ignore
       recorderRef.current.clearRecording();
       setHasRecordedFrames(false);
-
-      // Clear the old episodes
-      setEpisodes([]);
 
       toast({
         title: "Frames Reset",
@@ -489,21 +462,11 @@ export function Recorder({
       return;
     }
 
-    try {
-      await recorderRef.current.exportForLeRobot("zip-download");
-      toast({
-        title: "Download Started",
-        description: "Your dataset is being downloaded as a ZIP file",
-      });
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Failed to download dataset";
-      toast({
-        title: "Download Error",
-        description: errorMessage,
-        variant: "destructive",
-      });
-    }
+    await recorderRef.current.exportForLeRobot("zip-download");
+    toast({
+      title: "Download Started",
+      description: "Your dataset is being downloaded as a ZIP file",
+    });
   };
 
   const handleUploadToHuggingFace = async () => {
@@ -632,58 +595,7 @@ export function Recorder({
 
       <div className="p-6 space-y-6">
         <div className="border border-white/10 rounded-md overflow-hidden">
-          <Table>
-            <TableCaption>List of recorded episodes</TableCaption>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Episode ID</TableHead>
-                <TableHead>Frames</TableHead>
-                <TableHead>Duration</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {episodes.length > 0 ? (
-                episodes.map((episode) => (
-                  <TableRow key={episode.id}>
-                    <TableCell className="font-mono">{episode.id}</TableCell>
-                    <TableCell>
-                      {episode.status === "recording"
-                        ? "Recording..."
-                        : episode.frames}
-                    </TableCell>
-                    <TableCell>
-                      {episode.status === "recording"
-                        ? "Recording..."
-                        : episode.duration}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          episode.status === "recording"
-                            ? "destructive"
-                            : episode.status === "complete"
-                            ? "default"
-                            : "outline"
-                        }
-                      >
-                        {episode.status}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell
-                    colSpan={4}
-                    className="text-center text-muted-foreground"
-                  >
-                    No episodes recorded yet. Click "Start Recording" to begin.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+          <TeleoperatorEpisodesView teleoperatorData={recorderRef.current?.teleoperatorData} />
         </div>
 
         {/* Camera Configuration */}
@@ -864,7 +776,7 @@ export function Recorder({
               variant="outline"
               className="gap-2"
               onClick={handleDownloadZip}
-              disabled={episodes.length === 0 || isRecording}
+              disabled={recorderRef.current?.teleoperatorData.length === 0 || isRecording}
             >
               <Download className="w-4 h-4" />
               Download as ZIP
@@ -879,7 +791,7 @@ export function Recorder({
               className="gap-2"
               onClick={handleUploadToHuggingFace}
               disabled={
-                episodes.length === 0 || isRecording || !huggingfaceApiKey
+                recorderRef.current?.teleoperatorData.length === 0 || isRecording || !huggingfaceApiKey
               }
             >
               <Upload className="w-4 h-4" />
