@@ -1,22 +1,42 @@
 "use client";
 
 import { NonIndexedLeRobotDatasetRow } from "@lerobot/web";
+import { TeleoperatorJointGraph } from "./teleoperator-joint-graph";
 
 interface TeleoperatorFramesViewProps {
   frames: NonIndexedLeRobotDatasetRow[];
 }
 
 export function TeleoperatorFramesView({ frames }: TeleoperatorFramesViewProps) {
-  // Helper function to format an object as a column of key-value pairs
+  // Joint names in the order they appear in the arrays
+  const jointNames = [
+    "shoulder_pan", 
+    "shoulder_lift",
+    "elbow_flex",
+    "wrist_flex",
+    "wrist_roll",
+    "gripper"
+  ];
+
+  // Helper function to format an object as a column of key-value pairs with joint names
   const formatArrayAsColumn = (obj: Record<number, number>): string => {
     return Object.entries(obj)
-      .map(([key, value]) => `${key}: ${value}`)
+      .map(([key, value]) => {
+        // Convert numeric key to joint name if possible
+        const index = parseInt(key);
+        const jointName = !isNaN(index) && index < jointNames.length ? jointNames[index] : key;
+        return `${jointName}: ${value}`;
+      })
       .join('\n');
   };
   
   return (
-    <div className="ml-8 mr-4 mb-2 bg-gray-800/50 rounded-md overflow-hidden">
+    <div className="ml-8 mr-4 mb-2">
+      {/* Joint visualization graph */}
+      <TeleoperatorJointGraph frames={frames} />
+      
       {/* Frames container with horizontal scroll */}
+      <div className="bg-gray-800/50 rounded-md overflow-hidden">
       <div className="overflow-x-auto">
         {/* Frames header */}
         <table className="w-full min-w-max table-fixed">
@@ -51,6 +71,7 @@ export function TeleoperatorFramesView({ frames }: TeleoperatorFramesViewProps) 
             ))}
           </tbody>
         </table>
+      </div>
       </div>
     </div>
   );

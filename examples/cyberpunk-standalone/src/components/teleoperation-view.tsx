@@ -190,15 +190,18 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
           type: "direct",
         },
         calibrationData,
+        onStateUpdate: (state: TeleoperationState) => {
+          setTeleopState(state);
+        },
       };
       const directProcess = await teleoperate(directConfig);
 
       keyboardProcessRef.current = keyboardProcess;
       directProcessRef.current = directProcess;
-      setTeleopState(keyboardProcess.getState());
+      setTeleopState(directProcess.getState());
 
       // Initialize local motor positions from hardware state
-      const initialState = keyboardProcess.getState();
+      const initialState = directProcess.getState();
       const initialPositions: {
         [motorName: string]: { position: number; timestamp: number };
       } = {};
@@ -307,7 +310,7 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
       if (!success) return;
     }
 
-    if (!keyboardProcessRef.current || !directProcessRef.current) {
+    if (!(keyboardProcessRef.current || directProcessRef.current)) {
       toast({
         title: "Teleoperation Error",
         description: "Teleoperation not initialized",
@@ -317,8 +320,8 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
     }
 
     try {
-      keyboardProcessRef.current.start();
-      directProcessRef.current.start();
+      keyboardProcessRef.current?.start();
+      directProcessRef.current?.start();
     } catch (error) {
       const errorMessage =
         error instanceof Error
@@ -468,7 +471,8 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
 
   // Memoize teleoperators array to prevent unnecessary re-renders of the Recorder component
   const memoizedTeleoperators = useMemo(() => {
-    if (!keyboardProcessRef.current || !directProcessRef.current) return [];
+    if (!(keyboardProcessRef.current || directProcessRef.current)) return [];
+
     return [
       keyboardProcessRef.current?.teleoperator,
       directProcessRef.current?.teleoperator,

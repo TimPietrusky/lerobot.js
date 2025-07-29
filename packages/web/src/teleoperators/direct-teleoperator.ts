@@ -70,8 +70,6 @@ export class DirectTeleoperator extends BaseWebTeleoperator {
       motorConfig.minPosition,
       Math.min(motorConfig.maxPosition, targetPosition)
     );
-
-    const prevPosition = motorConfig.currentPosition;
     const prevMotorConfigs = structuredClone(this.motorConfigs)
 
     try {

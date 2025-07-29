@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { LeRobotEpisode } from "@lerobot/web";
-import { ChevronDown, ChevronRight } from "lucide-react";
 import { TeleoperatorFramesView } from "./teleoperator-frames-view";
+import { Button } from "./ui/button";
 
 interface TeleoperatorEpisodesViewProps {
   teleoperatorData?: LeRobotEpisode[];
@@ -43,8 +43,8 @@ export function TeleoperatorEpisodesView({ teleoperatorData }: TeleoperatorEpiso
                 <div className="flex-1 px-4 py-2 font-mono">{episode.length}</div>
                 <div className="px-4 py-2 cursor-pointer" onClick={() => toggleEpisode(i)}>
                   {expandedEpisodes[i] ? 
-                    <ChevronDown className="h-4 w-4" /> : 
-                    <ChevronRight className="h-4 w-4" />}
+                    <Button>hide frames</Button> : 
+                    <Button>show frames</Button>}
                 </div>
               </div>
               

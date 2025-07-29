@@ -41,13 +41,6 @@ interface RecorderProps {
   videoStreams?: { [key: string]: MediaStream };
 }
 
-interface Episode {
-  id: number;
-  frames: number;
-  duration: string;
-  status: "complete" | "recording" | "pending";
-}
-
 
 
 export function Recorder({

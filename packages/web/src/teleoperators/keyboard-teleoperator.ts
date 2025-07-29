@@ -247,12 +247,16 @@ export class KeyboardTeleoperator extends BaseWebTeleoperator {
 
     const positionChangedTimestamp = performance.now()/1000;
 
-    // Dispatch event for motor position change
-    this.dispatchMotorPositionChanged(
-      prevMotorConfigs,
-      this.motorConfigs,
-      commandSentTimestamp, 
-      positionChangedTimestamp
-    );
+    // Dispatch event for motor position change if something has changed
+    const somethingChanged = Object.entries(targetPositions).length > 0;
+
+    if(somethingChanged){
+      this.dispatchMotorPositionChanged(
+        prevMotorConfigs,
+        this.motorConfigs,
+        commandSentTimestamp, 
+        positionChangedTimestamp
+      );
+    }
   }
 }

@@ -394,7 +394,7 @@ export class LeRobotDatasetRecorder {
             const action = this._actionInterpolatate(closestItemData.action, nextItemData.action, closestItemData.timestamp, nextItemData.timestamp, timestamp);
             const observation_state = this._actionInterpolatate(closestItemData["observation.state"], nextItemData["observation.state"], closestItemData.timestamp, nextItemData.timestamp, timestamp);
 
-            interpolatedData.push({
+/*             interpolatedData.push({
                 timestamp: timestamp,
                 action: this.convertActionToArray(action),
                 "observation.state": this.convertActionToArray(observation_state),
@@ -402,8 +402,18 @@ export class LeRobotDatasetRecorder {
                 task_index: closestItemData.task_index,
                 frame_index : i,
                 index: lastFrameIndex + i
-            });
-        }
+            }); */
+
+            interpolatedData.push({
+                timestamp: closestItemData.timestamp,
+                action: this.convertActionToArray(closestItemData.action),
+                "observation.state": this.convertActionToArray(closestItemData["observation.state"]),
+                episode_index: closestItemData.episode_index,
+                task_index: closestItemData.task_index,
+                frame_index : i,
+                index: lastFrameIndex + i
+            })
+        }   
 
         return interpolatedData;
     }

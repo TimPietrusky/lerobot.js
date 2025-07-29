@@ -184,6 +184,8 @@ export abstract class BaseWebTeleoperator extends WebTeleoperator {
    * @param timestamp The timestamp of the event
    */
   dispatchMotorPositionChanged(prevMotorConfigs: MotorConfig[], newMotorConfigs: MotorConfig[], commandSentTimestamp: number, positionChangedTimestamp: number): void {
+    console.log("called in", this.constructor.name)
+    console.trace();
     this.dispatchEvent(new CustomEvent("motor-position-changed", {
       detail: {
         previousMotorConfigs : prevMotorConfigs,
