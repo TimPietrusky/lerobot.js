@@ -105,6 +105,7 @@ export function Recorder({
   const [cameraPermissionState, setCameraPermissionState] = useState<
     "unknown" | "granted" | "denied"
   >("unknown");
+  const [showCameraConfig, setShowCameraConfig] = useState(false);
   const [showConfigure, setShowConfigure] = useState(false);
   const [recorderSettings, setRecorderSettings] = useState<RecorderSettings>(
     () => getRecorderSettings()
@@ -114,6 +115,7 @@ export function Recorder({
     null
   );
   const [editingCameraNewName, setEditingCameraNewName] = useState("");
+  const [huggingfaceApiKey, setHuggingfaceApiKey] = useState("")
   const recorderRef = useRef<LeRobotDatasetRecorder | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const { toast } = useToast();
@@ -1076,7 +1078,7 @@ export function Recorder({
               variant="outline"
               className="gap-2"
               onClick={handleDownloadZip}
-              disabled={episodes.length === 0 || isRecording}
+              disabled={recorderRef.current?.teleoperatorData.length === 0 || isRecording}
             >
               <Download className="w-4 h-4" />
               Download as ZIP
@@ -1086,7 +1088,7 @@ export function Recorder({
               className="gap-2"
               onClick={handleUploadToHuggingFace}
               disabled={
-                episodes.length === 0 ||
+                recorderRef.current?.teleoperatorData.length === 0 ||
                 isRecording ||
                 !recorderSettings.huggingfaceApiKey
               }
