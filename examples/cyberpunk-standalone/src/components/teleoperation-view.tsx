@@ -20,8 +20,6 @@ import {
   type TeleoperateConfig,
   type RobotConnection,
 } from "@lerobot/web";
-// Import the LeRobotSO100 class directly from the package
-import { LeRobotSO100 } from "@lerobot/web";
 import { getUnifiedRobotData } from "@/lib/unified-storage";
 import VirtualKey from "@/components/VirtualKey";
 import { Recorder } from "@/components/recorder";
@@ -80,52 +78,7 @@ const DEFAULT_MOTOR_CONFIGS = [
   { name: "gripper", currentPosition: 2048, minPosition: 0, maxPosition: 4095 },
 ];
 
-// URDF Robot Component to display the robot model
-function URDFRobotModel({ robotInstance }: { robotInstance: LeRobotSO100 | null }) {
-  const [urdfRobot, setUrdfRobot] = useState<any>(null);
-
-  useEffect(() => {
-    if (robotInstance) {
-      // Load the URDF model
-      robotInstance.initialize().then(() => {
-        setUrdfRobot(robotInstance.getURDF());
-        robotInstance.setJoints({
-          Elbow: Math.PI/2,
-          Jaw: Math.PI/2,
-          Pitch: Math.PI/2,
-          Rotation: Math.PI/2,
-          Wrist_Pitch: Math.PI/2,
-          Wrist_Roll: Math.PI/2
-        });
-      }).catch((error: Error) => {
-        console.error("Failed to load URDF model:", error);
-      });
-    }
-  }, [robotInstance]);
-
-  // If the URDF model is not loaded yet, show a loading message
-  if (!urdfRobot) {
-    return (
-      <mesh>
-        <boxGeometry args={[0.5, 0.5, 0.5]} />
-        <meshStandardMaterial color="gray" />
-      </mesh>
-    );
-  }
-
-  // Return the URDF model
-  return (
-    <primitive 
-      object={urdfRobot} 
-      position={[0, 0, 0]} 
-      rotation={[-Math.PI/2, 0, 0]}
-      scale={15}
-    />
-  );
-}
-
 export function TeleoperationView({ robot }: TeleoperationViewProps) {
-  const [robotInstance, setRobotInstance] = useState<LeRobotSO100 | null>(null);
   const [teleopState, setTeleopState] = useState<TeleoperationState>({
     isActive: false,
     motorConfigs: [],
@@ -154,14 +107,6 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
     // Return undefined if no calibration data - let library handle defaults
     return undefined;
   }, [robot.serialNumber]);
-
-  // Initialize robot instance
-  useEffect(() => {
-    if (robot && robot.robotType) {
-      const newRobotInstance = new LeRobotSO100();
-      setRobotInstance(newRobotInstance);
-    }
-  }, [robot]);
 
   // Lazy initialization function - only connects when user wants to start
   const initializeTeleoperation = useCallback(async () => {

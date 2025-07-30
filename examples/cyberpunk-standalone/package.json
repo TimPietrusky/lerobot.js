@@ -69,7 +69,6 @@
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
     "three": "^0.178.0",
-    "urdf-loader": "^0.12.6",
     "vaul": "^0.9.6",
     "zod": "^3.24.1"
   },

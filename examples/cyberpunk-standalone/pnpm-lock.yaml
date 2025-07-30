@@ -185,9 +185,6 @@ importers:
       three:
         specifier: ^0.178.0
         version: 0.178.0
-      urdf-loader:
-        specifier: ^0.12.6
-        version: 0.12.6(three@0.178.0)
       vaul:
         specifier: ^0.9.6
         version: 0.9.9(@types/react-dom@19.1.6(@types/react@19.1.8))(@types/react@19.1.8)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -3367,11 +3364,6 @@ packages:
     hasBin: true
     peerDependencies:
       browserslist: '>= 4.21.0'
-
-  urdf-loader@0.12.6:
-    resolution: {integrity: sha512-EwpgOCPe6Tep2+MXoo/r13keHaKQXMcM+4s9+jX0NRxNS/QSNuP5JPdk5AIgWEoEB43AkEj9Vk+Nr53NkXgSbA==}
-    peerDependencies:
-      three: '>=0.152.0'
 
   uri-js@4.4.1:
     resolution: {integrity: sha512-7rKUyy33Q1yc98pQ1DAmLtwX109F7TIfWlW1Ydo8Wl1ii1SeHieeh0HHfPeL2fMXK6z0s8ecKs9frCuLJvndBg==}
@@ -7084,10 +7076,6 @@ snapshots:
       browserslist: 4.25.1
       escalade: 3.2.0
       picocolors: 1.1.1
-
-  urdf-loader@0.12.6(three@0.178.0):
-    dependencies:
-      three: 0.178.0
 
   uri-js@4.4.1:
     dependencies:

@@ -34,8 +34,8 @@
     "install-global": "pnpm run build && npm link"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.850.0",
-    "@aws-sdk/lib-storage": "^3.850.0",
+    "@aws-sdk/client-s3": "^3.856.0",
+    "@aws-sdk/lib-storage": "^3.856.0",
     "@huggingface/hub": "^2.4.0",
     "@react-three/cannon": "^6.6.0",
     "apache-arrow": "^21.0.0",
@@ -43,14 +43,13 @@
     "log-update": "^6.1.0",
     "parquet-wasm": "^0.6.1",
     "serialport": "^12.0.0",
-    "three": "^0.178.0",
-    "urdf-loader": "^0.12.6"
+    "three": "^0.178.0"
   },
   "devDependencies": {
     "@changesets/cli": "^2.29.5",
-    "@types/node": "^22.10.5",
+    "@types/node": "^22.17.0",
     "@types/three": "^0.178.1",
-    "tsx": "^4.19.2",
+    "tsx": "^4.20.3",
     "typescript": "~5.8.3"
   },
   "repository": {

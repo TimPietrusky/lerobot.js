@@ -9,7 +9,6 @@ export { calibrate } from "./calibrate.js";
 export { teleoperate } from "./teleoperate.js";
 export { findPort } from "./find_port.js";
 export { releaseMotors } from "./release_motors.js";
-export { LeRobotSO100 } from "./robots/so100/index.js";
 
 // Browser support utilities
 export {
