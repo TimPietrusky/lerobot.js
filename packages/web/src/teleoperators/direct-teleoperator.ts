@@ -87,7 +87,6 @@ export class DirectTeleoperator extends BaseWebTeleoperator {
       }
 
       this.dispatchMotorPositionChanged(prevMotorConfigs,this.motorConfigs, commandSentTimestamp, positionChangedTimestamp);
-
       return true;
     } catch (error) {
       console.warn(`Failed to move motor ${motorName}:`, error);

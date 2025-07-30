@@ -172,9 +172,7 @@ export async function teleoperate(
     },
     getState: () => buildTeleoperationStateFromTeleoperator(teleoperator),
     teleoperator,
-    disconnect: () => teleoperator.disconnect(),
-    startRecording: () => teleoperator.startRecording(),
-    stopRecording: () => teleoperator.stopRecording(),
+    disconnect: () => teleoperator.disconnect()
   };
 }
 

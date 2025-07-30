@@ -471,13 +471,12 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
 
   // Memoize teleoperators array to prevent unnecessary re-renders of the Recorder component
   const memoizedTeleoperators = useMemo(() => {
-    if (!(keyboardProcessRef.current || directProcessRef.current)) return [];
+    if (!directProcessRef.current) return [];
 
     return [
-      keyboardProcessRef.current?.teleoperator,
       directProcessRef.current?.teleoperator,
     ].filter(Boolean);
-  }, [keyboardProcessRef.current, directProcessRef.current]);
+  }, [directProcessRef.current]);
 
   return (
     <>
