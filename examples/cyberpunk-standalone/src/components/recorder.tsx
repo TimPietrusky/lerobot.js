@@ -36,8 +36,8 @@ import {
   Edit2,
   Check,
 } from "lucide-react";
-// Removed Dialog imports - settings are now inline
-import { LeRobotDatasetRecorder } from "@lerobot/web";
+import { LeRobotDatasetRecorder, LeRobotDatasetRow, NonIndexedLeRobotDatasetRow, LeRobotEpisode } from "@lerobot/web";
+import { TeleoperatorEpisodesView } from "./teleoperator-episodes-view";
 
 interface RecorderProps {
   teleoperators: any[];
@@ -46,12 +46,7 @@ interface RecorderProps {
   videoStreams?: { [key: string]: MediaStream };
 }
 
-interface Episode {
-  id: number;
-  frames: number;
-  duration: string;
-  status: "complete" | "recording" | "pending";
-}
+
 
 interface RecorderSettings {
   huggingfaceApiKey: string;
@@ -95,7 +90,6 @@ export function Recorder({
   onNeedsTeleoperation,
 }: RecorderProps) {
   const [isRecording, setIsRecording] = useState(false);
-  const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [currentEpisode, setCurrentEpisode] = useState(0);
   // Use huggingfaceApiKey from recorderSettings instead of separate state
   const [cameraName, setCameraName] = useState("");
@@ -177,17 +171,6 @@ export function Recorder({
       setIsRecording(true);
       setHasRecordedFrames(true);
 
-      // Add a new episode to the list
-      setEpisodes((prev) => [
-        ...prev,
-        {
-          id: currentEpisode,
-          frames: 0,
-          duration: "00:00",
-          status: "recording",
-        },
-      ]);
-
       toast({
         title: "Recording Started",
         description: `Episode ${currentEpisode} is now recording`,
@@ -211,20 +194,6 @@ export function Recorder({
     try {
       const result = await recorderRef.current.stopRecording();
       setIsRecording(false);
-
-      // Update the episode status
-      setEpisodes((prev) =>
-        prev.map((ep) =>
-          ep.id === currentEpisode
-            ? {
-                ...ep,
-                status: "complete",
-                frames: result.teleoperatorData.length,
-                duration: formatDuration(result.teleoperatorData.length / 30), // Assuming 30fps
-              }
-            : ep
-        )
-      );
 
       toast({
         title: "Recording Stopped",
@@ -263,12 +232,8 @@ export function Recorder({
     }
 
     if (recorderRef.current) {
-      // @ts-ignore
       recorderRef.current.clearRecording();
       setHasRecordedFrames(false);
-
-      // Clear the old episodes
-      setEpisodes([]);
 
       toast({
         title: "Frames Reset",
@@ -664,21 +629,11 @@ export function Recorder({
       return;
     }
 
-    try {
-      await recorderRef.current.exportForLeRobot("zip-download");
-      toast({
-        title: "Download Started",
-        description: "Your dataset is being downloaded as a ZIP file",
-      });
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Failed to download dataset";
-      toast({
-        title: "Download Error",
-        description: errorMessage,
-        variant: "destructive",
-      });
-    }
+    await recorderRef.current.exportForLeRobot("zip-download");
+    toast({
+      title: "Download Started",
+      description: "Your dataset is being downloaded as a ZIP file",
+    });
   };
 
   const handleUploadToHuggingFace = async () => {
@@ -1143,58 +1098,217 @@ export function Recorder({
         </div>
 
         <div className="border border-white/10 rounded-md overflow-hidden">
-          <Table>
-            <TableCaption>List of recorded episodes</TableCaption>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Episode ID</TableHead>
-                <TableHead>Frames</TableHead>
-                <TableHead>Duration</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {episodes.length > 0 ? (
-                episodes.map((episode) => (
-                  <TableRow key={episode.id}>
-                    <TableCell className="font-mono">{episode.id}</TableCell>
-                    <TableCell>
-                      {episode.status === "recording"
-                        ? "Recording..."
-                        : episode.frames}
-                    </TableCell>
-                    <TableCell>
-                      {episode.status === "recording"
-                        ? "Recording..."
-                        : episode.duration}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          episode.status === "recording"
-                            ? "destructive"
-                            : episode.status === "complete"
-                            ? "default"
-                            : "outline"
-                        }
-                      >
-                        {episode.status}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell
-                    colSpan={4}
-                    className="text-center text-muted-foreground"
+          <TeleoperatorEpisodesView teleoperatorData={recorderRef.current?.teleoperatorData} />
+        </div>
+
+        {/* Camera Configuration */}
+        <div className="border-t border-white/10 pt-4 mt-4">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold">Camera Setup</h3>
+            <Button
+              onClick={() => setShowCameraConfig(!showCameraConfig)}
+              variant="outline"
+              size="sm"
+              className="gap-2"
+            >
+              <Camera className="w-4 h-4" />
+              {showCameraConfig ? "Hide Camera Config" : "Configure Cameras"}
+            </Button>
+          </div>
+
+          {showCameraConfig && (
+            <div className="bg-black/40 border border-white/20 rounded-lg p-6 mb-4">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Left Column: Camera Preview & Selection */}
+                <div className="space-y-4">
+                  <h4 className="text-md font-semibold text-white/90">
+                    Camera Preview
+                  </h4>
+
+                  {/* Camera Preview */}
+                  <div className="aspect-video bg-black/60 border border-white/20 rounded-lg overflow-hidden">
+                    {previewStream ? (
+                      <video
+                        ref={videoRef}
+                        autoPlay
+                        muted
+                        playsInline
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-white/60">
+                        <div className="text-center">
+                          <Camera className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                          {isLoadingCameras ? (
+                            <p>Loading cameras...</p>
+                          ) : cameraPermissionState === "denied" ? (
+                            <div>
+                              <p>Camera access denied</p>
+                              <p className="text-xs mt-1">
+                                Please allow camera access and refresh
+                              </p>
+                            </div>
+                          ) : availableCameras.length === 0 ? (
+                            <p>Click "Load Cameras" to start</p>
+                          ) : (
+                            <p>Select a camera to preview</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Camera Controls */}
+                  <div className="space-y-3">
+                    <Button
+                      onClick={() => loadAvailableCameras(false)}
+                      variant="outline"
+                      className="w-full gap-2"
+                      disabled={hasRecordedFrames || isLoadingCameras}
+                    >
+                      <Camera className="w-4 h-4" />
+                      {isLoadingCameras
+                        ? "Loading..."
+                        : availableCameras.length > 0
+                        ? "Refresh Cameras"
+                        : "Load Cameras"}
+                    </Button>
+
+                    {availableCameras.length > 0 && (
+                      <div className="space-y-2">
+                        <label className="text-sm text-white/70">
+                          Select Camera:
+                        </label>
+                        <Select
+                          value={selectedCameraId}
+                          onValueChange={switchCameraPreview}
+                          disabled={hasRecordedFrames}
+                        >
+                          <SelectTrigger className="w-full bg-black/20 border-white/10">
+                            <SelectValue placeholder="Choose a camera" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableCameras.map((camera) => (
+                              <SelectItem
+                                key={camera.deviceId}
+                                value={camera.deviceId}
+                              >
+                                {camera.label ||
+                                  `Camera ${camera.deviceId.slice(0, 8)}...`}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right Column: Camera Naming & Adding */}
+                <div className="space-y-4">
+                  <h4 className="text-md font-semibold text-white/90">
+                    Add to Recorder
+                  </h4>
+
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-sm text-white/70">
+                        Camera Name:
+                      </label>
+                      <Input
+                        placeholder="e.g., 'Overhead View', 'Side Angle', 'Close-up'"
+                        value={cameraName}
+                        onChange={(e) => setCameraName(e.target.value)}
+                        className="bg-black/20 border-white/10"
+                        disabled={hasRecordedFrames}
+                      />
+                      <p className="text-xs text-white/50">
+                        Give this camera a descriptive name for your recording
+                        setup
+                      </p>
+                    </div>
+
+                    <Button
+                      onClick={handleAddCamera}
+                      className="w-full gap-2"
+                      disabled={
+                        hasRecordedFrames ||
+                        !cameraName.trim() ||
+                        !selectedCameraId ||
+                        !previewStream
+                      }
+                    >
+                      <PlusCircle className="w-4 h-4" />
+                      Add Camera to Recorder
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Display added cameras */}
+          {Object.keys(additionalCameras).length > 0 && (
+            <div className="mb-4 space-y-2">
+              <p className="text-sm text-muted-foreground">Added Cameras:</p>
+              <div className="flex flex-wrap gap-2">
+                {Object.keys(additionalCameras).map((name) => (
+                  <Badge
+                    key={name}
+                    variant="secondary"
+                    className="flex items-center gap-1 py-1 px-2"
                   >
-                    No episodes recorded yet. Click "Start Recording" to begin.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+                    {name}
+                    <button
+                      onClick={() => handleRemoveCamera(name)}
+                      className="ml-1 text-muted-foreground hover:text-destructive"
+                      disabled={hasRecordedFrames}
+                    >
+                      ×
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={handleDownloadZip}
+              disabled={recorderRef.current?.teleoperatorData.length === 0 || isRecording}
+            >
+              <Download className="w-4 h-4" />
+              Download as ZIP
+            </Button>
+
+            {/* Reset Frames button moved to top bar */}
+          </div>
+
+          <div className="flex items-center gap-2 flex-1">
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={handleUploadToHuggingFace}
+              disabled={
+                recorderRef.current?.teleoperatorData.length === 0 || isRecording || !huggingfaceApiKey
+              }
+            >
+              <Upload className="w-4 h-4" />
+              Upload to HuggingFace
+            </Button>
+
+            <Input
+              placeholder="HuggingFace API Key"
+              value={huggingfaceApiKey}
+              onChange={(e) => setHuggingfaceApiKey(e.target.value)}
+              className="flex-1 bg-black/20 border-white/10"
+              type="password"
+            />
+          </div>
         </div>
       </div>
     </Card>

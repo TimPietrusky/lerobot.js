@@ -40,8 +40,6 @@ export interface TeleoperationProcess {
   getState(): TeleoperationState;
   teleoperator: WebTeleoperator;
   disconnect(): Promise<void>;
-  startRecording(): void;
-  stopRecording(): void;
 }
 
 /**

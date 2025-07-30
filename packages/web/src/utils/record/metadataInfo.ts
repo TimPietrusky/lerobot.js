@@ -30,18 +30,20 @@ interface MetadataParams {
  */
 function getMetadataInfo(params: MetadataParams) {
     return {
-        "codebase_version": "v3.0",
+        "codebase_version": "v2.1",
         "robot_type": "so100",
         "total_episodes": params.total_episodes,
         "total_frames": params.total_frames,
         "total_tasks": params.total_tasks,
+        "total_videos": params.videos_info.length,
+        "total_chunks": 1,
         "chunks_size": params.chunks_size,
         "fps": params.fps,
         "splits": {
-            "train": "0:50"
+            "train": `0:${params.total_episodes}`
         },
-        "data_path": "data/chunk-{chunk_index:03d}/file-{file_index:03d}.parquet",
-        "video_path": "videos/{video_key}/chunk-{chunk_index:03d}/file-{file_index:03d}.mp4",
+        "data_path": "data/chunk-{episode_chunk:03d}/episode_{episode_index:06d}.parquet",
+        "video_path": "videos/chunk-{episode_chunk:03d}/{video_key}/episode_{episode_index:06d}.mp4",
         "features": {
             "action": {
                 "dtype": "float32",
@@ -73,30 +75,7 @@ function getMetadataInfo(params: MetadataParams) {
                 ],
                 "fps": params.fps
             },
-            "observation.images.top": {
-                "dtype": "video",
-                "shape": [
-                    480,
-                    640,
-                    3
-                ],
-                "names": [
-                    "height",
-                    "width",
-                    "channels"
-                ],
-                "info": {
-                    "video.fps": params.fps,
-                    "video.height": 480,
-                    "video.width": 640,
-                    "video.channels": 3,
-                    "video.codec": "av1",
-                    "video.pix_fmt": "yuv420p",
-                    "video.is_depth_map": false,
-                    "has_audio": false
-                }
-            },
-            "observation.images.wrist": {
+            "observation.images.front": {
                 "dtype": "video",
                 "shape": [
                     480,

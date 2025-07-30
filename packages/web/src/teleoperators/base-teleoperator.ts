@@ -23,25 +23,46 @@ function normalizeValue(value: number, minVal: number, maxVal: number, minNorm: 
 }
 
 /**
+ * Type definition for state update callback parameters
+ */
+interface StateUpdateCallbackParams {
+  previousMotorConfigs: MotorConfig[];
+  newMotorConfigs: MotorConfig[];
+  previousMotorConfigsNormalized: MotorConfig[];
+  newMotorConfigsNormalized: MotorConfig[];
+  commandSentTimestamp: number;
+  positionChangedTimestamp: number;
+}
+
+/**
+ * Type definition for state update callback function
+ */
+type StateUpdateCallback = (params: StateUpdateCallbackParams) => void;
+
+/**
+ * Type definition for array of state update callbacks
+ */
+type StateUpdateCallbackArray = Array<StateUpdateCallback>;
+
+/**
  * Base interface that all Web teleoperators must implement
  */
-export abstract class WebTeleoperator extends EventTarget {
+export abstract class WebTeleoperator {
+  protected onStateUpdateCallbacks: StateUpdateCallbackArray = [];
   public motorConfigs: MotorConfig[] = [];
-  abstract recordedMotorPositions: any;
   abstract initialize(): Promise<void>;
   abstract start(): void;
   abstract stop(): void;
 
   abstract recordingTaskIndex : number;
   abstract recordingEpisodeIndex : number;
-  abstract startRecording(): void;
-  abstract stopRecording(): any;
   abstract setEpisodeIndex(index: number): void;
   abstract setTaskIndex(index: number): void;
   
   abstract disconnect(): Promise<void>;
   abstract getState(): TeleoperatorSpecificState;
   abstract onMotorConfigsUpdate(motorConfigs: MotorConfig[]): void;
+  abstract addOnStateUpdateCallback(fn : StateUpdateCallback): void;
 }
 
 /**
@@ -60,7 +81,6 @@ export abstract class BaseWebTeleoperator extends WebTeleoperator {
   protected port: MotorCommunicationPort;
   public motorConfigs: MotorConfig[] = [];
   protected isActive: boolean = false;
-  public recordedMotorPositions: any;
   public isRecording: boolean = false;
   public recordingTaskIndex : number;
   public recordingEpisodeIndex : number;
@@ -71,10 +91,7 @@ export abstract class BaseWebTeleoperator extends WebTeleoperator {
     this.port = port;
     this.motorConfigs = motorConfigs;
 
-    // utility to store all position changes asked for and planned
-    this.recordedMotorPositions = [];
-
-    // like recorded motor positions, but now with episode-wise data
+    // store episode positions
     this.recordedMotorPositionEpisodes = []
 
     this.isRecording = false;
@@ -94,13 +111,6 @@ export abstract class BaseWebTeleoperator extends WebTeleoperator {
     }
   }
 
-  /**
-   * Starts recording motor positions
-   */
-  startRecording(): void {
-    this.isRecording = true;
-  }
-
   setEpisodeIndex(index: number): void {
     this.recordingEpisodeIndex = index;
 
@@ -111,22 +121,7 @@ export abstract class BaseWebTeleoperator extends WebTeleoperator {
   setTaskIndex(index: number): void {
     this.recordingTaskIndex = index;
   }
-
-  /**
-   * Stops recording and returns the recorded motor positions
-   * @returns The recorded motor positions
-   */
-  stopRecording(): any {
-    this.isRecording = false;
-    const recordedPositions = this.recordedMotorPositions;
-    this.recordedMotorPositions = [];
-
-    const recordedEpisodes = this.recordedMotorPositionEpisodes;
-    this.recordedMotorPositionEpisodes = []
-
-    return recordedEpisodes;
-  }
-
+  
   onMotorConfigsUpdate(motorConfigs: MotorConfig[]): void {
     this.motorConfigs = motorConfigs;
   }
@@ -158,14 +153,31 @@ export abstract class BaseWebTeleoperator extends WebTeleoperator {
    * Meaning, for everything except gripper, it normalizes the positions to between -100 and 100
    * and for gripper it normalizes between 0 - 100
    */
-  normalizeMotorConfigs(motorConfigs : MotorConfig[]){
-    let normalizedValues : { [key: string]: number} = {};
-
-    for(let config of motorConfigs){
-      normalizedValues[config.name] = this.normalizeMotorConfigPosition(config)
+  normalizeMotorConfigs(motorConfigs : MotorConfig[]) : MotorConfig[] {
+    // Create a deep copy of the motor configs
+    const normalizedConfigs = JSON.parse(JSON.stringify(motorConfigs)) as MotorConfig[];
+    
+    // Normalize the current position values
+    for(let i = 0; i < normalizedConfigs.length; i++) {
+      const config = normalizedConfigs[i];
+      
+      if(config.name === "gripper") {
+        config.currentPosition = normalizeValue(motorConfigs[i].currentPosition, motorConfigs[i].minPosition, motorConfigs[i].maxPosition, 0, 100);
+      } else {
+        config.currentPosition = normalizeValue(motorConfigs[i].currentPosition, motorConfigs[i].minPosition, motorConfigs[i].maxPosition, -100, 100);
+      }
+      
+      // Also normalize min/max positions for consistency
+      if(config.name === "gripper") {
+        config.minPosition = 0;
+        config.maxPosition = 100;
+      } else {
+        config.minPosition = -100;
+        config.maxPosition = 100;
+      }
     }
-
-    return normalizedValues
+    
+    return normalizedConfigs;
   }
 
   /**
@@ -183,18 +195,18 @@ export abstract class BaseWebTeleoperator extends WebTeleoperator {
    * @param timestamp The timestamp of the event
    */
   dispatchMotorPositionChanged(prevMotorConfigs: MotorConfig[], newMotorConfigs: MotorConfig[], commandSentTimestamp: number, positionChangedTimestamp: number): void {
-    this.dispatchEvent(new CustomEvent("motor-position-changed", {
-      detail: {
-        previousMotorConfigs : prevMotorConfigs,
-        newMotorConfigs,
-        previousMotorConfigsNormalized : this.normalizeMotorConfigs(prevMotorConfigs),
-        newMotorConfigsNormalized : this.normalizeMotorConfigs(newMotorConfigs),
-        commandSentTimestamp,
-        positionChangedTimestamp,
-        episodeIndex: this.recordingEpisodeIndex,
-        taskIndex: this.recordingTaskIndex,
-      },
-    }));
+    // Call all registered state update callbacks
+    const callbackParams: StateUpdateCallbackParams = {
+      previousMotorConfigs: prevMotorConfigs,
+      newMotorConfigs: newMotorConfigs,
+      previousMotorConfigsNormalized: this.normalizeMotorConfigs(prevMotorConfigs),
+      newMotorConfigsNormalized: this.normalizeMotorConfigs(newMotorConfigs),
+      commandSentTimestamp: commandSentTimestamp,
+      positionChangedTimestamp: positionChangedTimestamp
+    };
+    
+    // call all the onStateUpdateCallbacks
+    this.onStateUpdateCallbacks.forEach(callback => callback(callbackParams));
 
     // if recording, store the changes
     if(this.isRecording) {
@@ -209,11 +221,18 @@ export abstract class BaseWebTeleoperator extends WebTeleoperator {
         taskIndex: this.recordingTaskIndex,
       }
 
-      this.recordedMotorPositions.push(data);
-
       const episodes = this.recordedMotorPositionEpisodes[this.recordingEpisodeIndex]
       episodes.push(data)
     }
+  }
+
+  /**
+   * Adds an onstateupdate callback
+   * to return a response for the user with motor config states and timestamps
+   * @param fn Callback function that receives state update parameters
+   */
+  addOnStateUpdateCallback(fn: StateUpdateCallback): void {
+    this.onStateUpdateCallbacks.push(fn);
   }
 
   get isActiveTeleoperator(): boolean {
