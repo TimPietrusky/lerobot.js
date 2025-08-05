@@ -62,6 +62,7 @@ export class DirectTeleoperator extends BaseWebTeleoperator {
    * Move motor to exact position
    */
   async moveMotor(motorName: string, targetPosition: number): Promise<boolean> {
+    const commandSentTimestamp = performance.now()/1000;
     const motorConfig = this.motorConfigs.find((m) => m.name === motorName);
     if (!motorConfig) return false;
 
@@ -69,6 +70,7 @@ export class DirectTeleoperator extends BaseWebTeleoperator {
       motorConfig.minPosition,
       Math.min(motorConfig.maxPosition, targetPosition)
     );
+    const prevMotorConfigs = structuredClone(this.motorConfigs)
 
     try {
       await writeMotorPosition(
@@ -77,12 +79,14 @@ export class DirectTeleoperator extends BaseWebTeleoperator {
         Math.round(clampedPosition)
       );
       motorConfig.currentPosition = clampedPosition;
+      const positionChangedTimestamp = performance.now()/1000;
 
       // Notify UI of position change
       if (this.onStateUpdate) {
         this.onStateUpdate(this.buildTeleoperationState());
       }
 
+      this.dispatchMotorPositionChanged(prevMotorConfigs,this.motorConfigs, commandSentTimestamp, positionChangedTimestamp);
       return true;
     } catch (error) {
       console.warn(`Failed to move motor ${motorName}:`, error);
@@ -96,11 +100,16 @@ export class DirectTeleoperator extends BaseWebTeleoperator {
   async setMotorPositions(positions: {
     [motorName: string]: number;
   }): Promise<boolean> {
+    const commandSentTimestamp = performance.now()/1000;
+    const prevMotorConfigs = structuredClone(this.motorConfigs)
     const results = await Promise.all(
       Object.entries(positions).map(([motorName, position]) =>
         this.moveMotor(motorName, position)
       )
     );
+    const positionChangedTimestamp = performance.now()/1000;
+
+    this.dispatchMotorPositionChanged(prevMotorConfigs,this.motorConfigs, commandSentTimestamp, positionChangedTimestamp);
 
     return results.every((result) => result);
   }
