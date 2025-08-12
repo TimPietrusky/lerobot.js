@@ -345,6 +345,17 @@ export class LeRobotDatasetRecorder {
   fps: number;
   taskDescription: string;
 
+  /**
+   * Ensures BlobPart compatibility across environments by converting Uint8Array
+   * to an ArrayBuffer with correct bounds and ArrayBuffer typing.
+   */
+  private static toArrayBuffer(uint8: Uint8Array): ArrayBuffer {
+    return uint8.buffer.slice(
+      uint8.byteOffset,
+      uint8.byteOffset + uint8.byteLength
+    );
+  }
+
   constructor(
     teleoperators: WebTeleoperator[],
     videoStreams: { [key: string]: MediaStream },
@@ -877,7 +888,9 @@ export class LeRobotDatasetRecorder {
         writerProperties
       );
       const numpadded = i.toString().padStart(6, "0");
-      const content = new Blob([parquetUint8Array]);
+      const content = new Blob([
+        LeRobotDatasetRecorder.toArrayBuffer(parquetUint8Array as Uint8Array),
+      ]);
 
       episodeBlobs.push({
         content,
@@ -1373,11 +1386,15 @@ export class LeRobotDatasetRecorder {
       },
       {
         path: "meta/tasks.parquet",
-        content: new Blob([tasksParquet]),
+        content: new Blob([
+          LeRobotDatasetRecorder.toArrayBuffer(tasksParquet as Uint8Array),
+        ]),
       },
       {
         path: "meta/episodes/chunk-000/file-000.parquet",
-        content: new Blob([episodesParquet]),
+        content: new Blob([
+          LeRobotDatasetRecorder.toArrayBuffer(episodesParquet as Uint8Array),
+        ]),
       },
       {
         path: "README.md",
