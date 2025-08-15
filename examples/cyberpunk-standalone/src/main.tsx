@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter } from "react-router-dom";
+import { HashRouter } from "react-router-dom";
 import "./global.css";
 import App from "./App";
 import { ThemeProvider } from "./components/theme-provider";
@@ -12,7 +12,7 @@ setTimeout(() => {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <BrowserRouter>
+    <HashRouter>
       <ThemeProvider
         attribute="class"
         defaultTheme="system"
@@ -21,6 +21,6 @@ createRoot(document.getElementById("root")!).render(
       >
         <App />
       </ThemeProvider>
-    </BrowserRouter>
+    </HashRouter>
   </StrictMode>
 );
