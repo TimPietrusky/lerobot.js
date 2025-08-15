@@ -350,10 +350,17 @@ export class LeRobotDatasetRecorder {
    * to an ArrayBuffer with correct bounds and ArrayBuffer typing.
    */
   private static toArrayBuffer(uint8: Uint8Array): ArrayBuffer {
-    return uint8.buffer.slice(
-      uint8.byteOffset,
-      uint8.byteOffset + uint8.byteLength
-    );
+    const buffer = uint8.buffer;
+    if (buffer instanceof ArrayBuffer) {
+      return buffer.slice(
+        uint8.byteOffset,
+        uint8.byteOffset + uint8.byteLength
+      );
+    }
+    // Handle SharedArrayBuffer case by copying to ArrayBuffer
+    const arrayBuffer = new ArrayBuffer(uint8.byteLength);
+    new Uint8Array(arrayBuffer).set(uint8);
+    return arrayBuffer;
   }
 
   constructor(
