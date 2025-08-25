@@ -185,7 +185,7 @@ const calibrationData = await calibrationProcess.result;
 
 #### Returns: `CalibrationProcess`
 
-- `result: Promise<WebCalibrationResults>` - Calibration data (Python-compatible format)
+- `result: Promise<CalibrationResults>` - Calibration data (Python-compatible format)
 - `stop(): void` - Stop calibration process
 
 #### Calibration Data Format

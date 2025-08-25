@@ -1,0 +1,36 @@
+{
+  "name": "node-quick-start",
+  "version": "0.1.0",
+  "description": "Node.js Quick Start example for @lerobot/node package",
+  "type": "module",
+  "scripts": {
+    "dev": "vite-node src/main.ts",
+    "build": "vite build",
+    "start": "node dist/main.js",
+    "demo:find-port": "vite-node src/demo-find-port.ts",
+    "demo:calibrate": "vite-node src/demo-calibrate.ts",
+    "demo:teleoperate": "vite-node src/demo-teleoperate.ts",
+    "demo:full-workflow": "vite-node src/main.ts"
+  },
+  "dependencies": {
+    "@lerobot/node": "file:../../packages/node"
+  },
+  "devDependencies": {
+    "vite": "^6.3.5",
+    "vite-node": "^2.0.0",
+    "typescript": "^5.3.0",
+    "@types/node": "^18.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "robotics",
+    "lerobot",
+    "nodejs",
+    "example",
+    "demo"
+  ],
+  "author": "LeRobot.js Team",
+  "license": "Apache-2.0"
+}

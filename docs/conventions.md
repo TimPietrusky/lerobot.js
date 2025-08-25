@@ -11,6 +11,7 @@
 ## Core Rules
 
 - **Never Start/Stop Dev Server**: The development server is already managed by the user - never run commands to start, stop, or restart the server
+- **Package Manager**: Always use `pnpm` for package management - never use `npm` or `yarn` in documentation, scripts, or commands
 - **Python lerobot Faithfulness**: Maintain exact UX/API compatibility with Python lerobot - commands, terminology, and workflows must match identically
 - **Serial API Separation**: Always use `serialport` package for Node.js and Web Serial API for browsers - never mix or bridge these incompatible APIs
 - **Minimal Console Output**: Only show essential information - reduce cognitive load for users
@@ -74,7 +75,7 @@
 
 - **Identical Commands**: `npx lerobot find-port` matches `python -m lerobot.find_port`
 - **Same Terminology**: Use "MotorsBus", not "robot arms" - keep Python's exact wording
-- **Matching Output**: Error messages, prompts, and flow identical to Python version
+- **Matching Output**: Error messages, prompts, and flow identical to Python lerobot
 - **Familiar Workflows**: Python lerobot users should feel immediately at home
 - **CLI Compatibility**: Direct migration path from Python CLI
 
@@ -193,7 +194,7 @@ lerobot/
 - **Integration Tests**: Test component interactions
 - **E2E Tests**: Playwright for full workflow testing
 - **Hardware Tests**: Mock/stub hardware interfaces for CI
-- **UX Compatibility Tests**: Verify outputs match Python version
+- **UX Compatibility Tests**: Verify outputs match Python lerobot
 
 ## Package Structure
 
@@ -218,6 +219,69 @@ lerobot/
 - **Hardware**: Platform-specific libraries for device access
 - **Development**: Vitest, ESLint, Prettier
 
+### Package Architecture Standards
+
+**Multi-Platform Package Structure:**
+
+```
+packages/
+├── web/                    # Browser-focused package (@lerobot/web)
+│   ├── src/
+│   ├── package.json       # Web Serial API, browser dependencies
+│   └── README.md          # Browser-specific examples
+├── node/                  # Node.js-focused package (@lerobot/node)
+│   ├── src/
+│   ├── package.json       # serialport dependency, library only
+│   └── README.md          # Node.js library examples
+└── cli/                   # CLI package (lerobot)
+    ├── src/
+    ├── package.json       # CLI binary, depends on @lerobot/node
+    └── README.md          # Python lerobot compatible commands
+```
+
+**API Consistency Rules:**
+
+- Identical function signatures across packages where possible
+- Platform-specific adaptations in types and implementations only
+- Shared constants and protocols via dedicated utils
+- Cross-platform compatibility for data formats (calibration files, etc.)
+
+**CLI Architecture & Separation of Concerns:**
+
+- **Library (`@lerobot/node`)**: Pure programmatic API for Node.js applications
+
+  - `findPort()` returns robot connections programmatically
+  - No interactive prompts, CLI output, or user input handling
+  - Matches `@lerobot/web` API design for consistency
+
+- **CLI (`lerobot`)**: Python lerobot compatible command-line interface
+
+  - Separate package in `packages/cli/` with `npx lerobot` binary
+  - Uses `@lerobot/node` library internally for all functionality
+  - Handles interactive prompts, user input, and CLI-specific UX
+  - Interactive by default - no flags required for standard workflows
+  - Identical command syntax and behavior to Python lerobot
+
+- **Architectural Principle**: Libraries provide capabilities, CLIs provide experience
+  - Interactive behavior belongs in CLI commands, not library functions
+  - Library users get clean APIs, CLI users get Python-compatible workflows
+
+### Local Package References
+
+When creating examples that depend on workspace packages, use `file:` references:
+
+```json
+{
+  "dependencies": {
+    "@lerobot/web": "file:../../packages/web",
+    "@lerobot/node": "file:../../packages/node",
+    "lerobot": "file:../../packages/cli"
+  }
+}
+```
+
+**Never use `workspace:*` in examples** - this is only for the root workspace `package.json`.
+
 ## Platform-Specific Implementation
 
 ### Node.js Implementation (Python-Compatible Foundation)
@@ -238,6 +302,45 @@ lerobot/
 - **File System**: Direct fs access for calibration files and datasets
 - **Port Discovery**: Programmatic port enumeration without user dialogs
 - **Process Management**: Direct process control and system integration
+
+#### Node.js Serial Communication (Critical Implementation Details)
+
+**Event-Driven Communication (Proven Working Approach):**
+
+- **Event-Based Reading**: Use `port.once('data')` with timeout promises
+- **Never Use Wrapper Polling**: Avoid `port.read(timeout)` wrappers - they add latency and unreliability
+- **Direct SerialPort Access**: Expose underlying `SerialPort` instance for event listening
+
+**Timing Constants for STS3215 Motors:**
+
+```typescript
+const STS3215_PROTOCOL = {
+  WRITE_TO_READ_DELAY: 0, // No delay before read - immediate event listening
+  RETRY_DELAY: 50, // Base retry delay (multiplied by attempt number)
+  INTER_MOTOR_DELAY: 10, // Small delay between motor operations
+  MAX_RETRIES: 3,
+};
+```
+
+**Progressive Timeout Pattern:**
+
+```typescript
+// Timeout increases with retry attempts: 100ms, 200ms, 300ms
+const timeout = 100 * attempts;
+const response = await new Promise((resolve, reject) => {
+  const timer = setTimeout(() => reject(new Error("Read timeout")), timeout);
+  underlyingPort.once("data", (data) => {
+    clearTimeout(timer);
+    resolve(new Uint8Array(data));
+  });
+});
+```
+
+**Connection Architecture:**
+
+- **Only `findPort()` Creates Connections**: No other high-level function should create new serial connections
+- **Initialized Port Returns**: `findPort()` must return ready-to-use, initialized ports
+- **Connection Reuse**: All functions (`calibrate`, `teleoperate`, `releaseMotors`) use existing connection from `findPort`
 
 ### Web Implementation (Modern Robotics Interface)
 
@@ -583,83 +686,124 @@ const STS3215_REGISTERS = {
 
 **This sequence debugging took extensive analysis to solve. Future implementations MUST follow this exact pattern to maintain Python compatibility.**
 
-#### CRITICAL: Smooth Motor Control Recipe (PROVEN WORKING)
+#### CRITICAL: Node.js Teleoperation Patterns (PROVEN WORKING)
 
-**These patterns provide buttery-smooth, responsive motor control. Deviating from this recipe causes stuttering, lag, or poor responsiveness.**
+**These patterns provide smooth, responsive teleoperation in Node.js. Deviating from this recipe causes delays, stuttering, or poor user experience.**
 
-##### 🚀 Performance Optimizations (KEEP THESE!)
+##### 🚀 Node.js Keyboard Control Architecture (FINAL SOLUTION)
 
-**1. Optimal Step Size**
+**The Challenge: Node.js stdin vs Browser Keyboard Events**
 
-- **✅ PERFECT**: `25` units per keypress (responsive but not jumpy)
-- **❌ WRONG**: `5` units (too sluggish) or `100` units (too aggressive)
+- **Browser**: Has real `keydown` and `keyup` events → perfect control
+- **Node.js**: Only has `keypress` events → must simulate keyup with timeouts
+- **OS Keyboard Repeat**: ~250-500ms delay between first press and repeat stream
 
-**2. Minimal Motor Communication Delay**
+**✅ PROVEN WORKING SOLUTION:**
 
-- **✅ PERFECT**: `1ms` delay between motor commands
-- **❌ WRONG**: `5ms+` delays cause stuttering
+```typescript
+// Optimal configuration values (DO NOT CHANGE without extensive testing)
+export const KEYBOARD_TELEOPERATOR_DEFAULTS = {
+  stepSize: 8, // Match browser demo step size
+  updateRate: 120, // High frequency for smooth movement (120 Hz)
+  keyTimeout: 150, // Balance single taps vs continuous movement
+} as const;
+```
 
-**3. Smart Motor Updates (CRITICAL FOR SMOOTHNESS)**
+**1. Hybrid Movement Pattern**
 
-- **✅ PERFECT**: Only send commands for motors that actually changed
-- **✅ PERFECT**: Use `0.5` unit threshold to detect meaningful changes
-- **❌ WRONG**: Send ALL motor positions every time (causes serial bus conflicts)
+- **✅ PERFECT**: Immediate movement on first keypress + continuous interval updates
+- **❌ WRONG**: Only immediate movement (no continuous) or only interval movement (has delay)
 
-**4. Change Detection Threshold**
+```typescript
+// On keypress: Move immediately + start/refresh continuous movement
+private handleKeyboardInput(key: string): void {
+  const keyName = this.mapKeyToName(key);
+  if (keyName && this.keyboardControls[keyName]) {
+    if (this.keyStates[keyName]) {
+      // Key repeat - just refresh timestamp
+      this.keyStates[keyName].timestamp = Date.now();
+    } else {
+      // New keypress - immediate movement + start continuous
+      this.updateKeyState(keyName, true);
+      this.moveMotorForKey(keyName); // ← IMMEDIATE, no delay
+    }
+  }
+}
+```
 
-- **✅ PERFECT**: `0.5` units prevents micro-movements and unnecessary commands
-- **❌ WRONG**: `0.1` units (too sensitive) or no threshold (constant spam)
+**2. Optimal Key Timeout Balance**
 
-##### 🎯 Teleoperation Loop Best Practices
+- **✅ PERFECT**: `150ms` - Good single taps, minimal continuous gap
+- **❌ WRONG**: `50ms` (single taps too short) or `600ms` (single taps too long)
+- **Why 150ms**: Bridges most OS keyboard repeat delay without making single taps sluggish
 
-**1. Eliminate Display Spam**
+**3. High-Frequency Updates**
 
-- **✅ PERFECT**: Minimal loop with just duration checks and 100ms delay
-- **❌ WRONG**: Constant position reading and display updates (causes 90ms+ lag)
+- **✅ PERFECT**: `120 Hz` update rate for smooth continuous movement
+- **❌ WRONG**: `60 Hz` (visible stuttering) or `200+ Hz` (unnecessary CPU load)
 
-**2. Event-Driven Keyboard Input**
+##### 🎯 Development Workflow Optimization
 
-- **✅ PERFECT**: Use `process.stdin.on("data")` for immediate response
-- **❌ WRONG**: Polling-based input with timers (adds delay)
+**Package Development Without Constant Rebuilding:**
 
-##### 🔧 Hardware Communication Patterns
+**✅ PERFECT Development Setup:**
 
-**1. Discrete Step-Based Control**
+1. **Terminal 1**: `cd packages/node && pnpm dev` (watch mode)
+2. **Terminal 2**: `cd packages/cli && pnpm dev teleoperate ...` (direct TypeScript execution)
 
-- **✅ PERFECT**: Immediate position updates on keypress
-- **❌ WRONG**: Continuous/velocity-based control (causes complexity and lag)
+**❌ WRONG**: Constantly running `pnpm build` and clearing `node_modules`
 
-**2. Direct Motor Position Writing**
+**Why This Works:**
 
-- **✅ PERFECT**: Simple, immediate motor updates with position limits
-- **❌ WRONG**: Complex interpolation, target positions, multiple update cycles
+- Node package rebuilds automatically on changes
+- CLI dev mode uses `vite-node` to run TypeScript directly
+- No package caching issues, immediate feedback
 
-##### 🎮 Proven Working Values
+##### 🔧 CLI Architecture Lessons
 
-**Key Configuration Values:**
+**1. No User-Facing Configuration**
 
-- `stepSize = 25` (default in teleoperate.ts and keyboard_teleop.ts)
-- `1ms` motor communication delay (so100_follower.ts)
-- `0.5` unit change detection threshold
-- `100ms` teleoperation loop delay
+- **✅ PERFECT**: `stepSize` handled internally by teleoperator defaults
+- **❌ WRONG**: Exposing `--step-size` CLI parameter (users don't understand motor units)
 
-##### ⚠️ Performance Killers (NEVER DO THESE)
+**2. Python lerobot Parameter Compatibility**
 
-1. **❌ Display Updates in Main Loop**: Causes 90ms+ loop times
-2. **❌ Continuous/Velocity Control**: Adds complexity without benefit for keyboard input
-3. **❌ All-Motor Updates**: Sends unnecessary commands, overwhelms serial bus
-4. **❌ Long Communication Delays**: 5ms+ delays cause stuttering
-5. **❌ Complex Interpolation**: Adds latency for simple step-based control
-6. **❌ No Change Detection**: Spams motors with identical positions
+- **✅ PERFECT**: `--robot.type`, `--robot.port`, `--robot.id`, `--teleop.type`
+- **❌ WRONG**: Different parameter names or structure than Python lerobot
 
-##### 📊 Performance Metrics (When It's Working Right)
+**3. Library vs CLI Separation**
 
-- **Keypress Response**: Immediate (< 10ms)
-- **Motor Update**: Single command per changed motor
-- **Loop Time**: < 5ms (when not reading positions)
-- **User Experience**: "Buttery smooth", "fucking working and super perfect"
+- **✅ PERFECT**: Library provides capabilities, CLI provides Python-compatible UX
+- **❌ WRONG**: Library handling CLI concerns or CLI reimplementing library logic
 
-**Golden Rule**: When you achieve smooth control, NEVER change the step size, delays, or update patterns without extensive testing. These values were optimized through real hardware testing.
+##### 🎮 Performance Characteristics (When Working Right)
+
+- **First Keypress Response**: Immediate (0ms delay)
+- **Continuous Movement**: Smooth 120 Hz updates
+- **Single Tap Duration**: ~150ms (1-2 motor movements)
+- **Key Repeat Transition**: Seamless (no gap)
+- **User Experience**: "Almost perfect", "way better", "smooth movement"
+
+##### ⚠️ Node.js Teleoperation Anti-Patterns (NEVER DO THESE)
+
+1. **❌ Only Timeout-Based Movement**: Causes initial delay on every keypress
+2. **❌ Only Immediate Movement**: No continuous movement when holding keys
+3. **❌ Long Key Timeouts (>300ms)**: Makes single taps feel sluggish
+4. **❌ Short Key Timeouts (<100ms)**: Breaks continuous movement due to OS repeat delay
+5. **❌ Low Update Rates (<100Hz)**: Visible stuttering during continuous movement
+6. **❌ Exposing stepSize to CLI**: Users can't meaningfully configure motor position units
+
+##### 📊 Debugging Keyboard Issues
+
+**Symptoms and Solutions:**
+
+- **"Initial delay when holding key"** → OS keyboard repeat delay, increase keyTimeout
+- **"Single taps move too far"** → keyTimeout too long, reduce to 150ms or less
+- **"Stuttering during continuous movement"** → updateRate too low, increase to 120Hz
+- **"No continuous movement"** → keyTimeout too short, increase above OS repeat delay
+- **"Immediate movement missing"** → Must call `moveMotorForKey()` on first keypress
+
+**Golden Rule**: The 150ms keyTimeout + 120Hz updateRate + immediate first movement pattern was achieved through extensive testing. Don't change these values without thorough hardware validation.
 
 ## Clean Library Architecture (Critical Lessons)
 

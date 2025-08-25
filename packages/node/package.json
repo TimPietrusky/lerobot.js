@@ -1,0 +1,71 @@
+{
+  "name": "@lerobot/node",
+  "version": "0.1.0",
+  "description": "Node.js-based robotics control using SerialPort",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./calibrate": {
+      "import": "./dist/calibrate.js",
+      "types": "./dist/calibrate.d.ts"
+    },
+    "./teleoperate": {
+      "import": "./dist/teleoperate.js",
+      "types": "./dist/teleoperate.d.ts"
+    },
+    "./find-port": {
+      "import": "./dist/find_port.js",
+      "types": "./dist/find_port.d.ts"
+    }
+  },
+  "files": [
+    "dist/**/*",
+    "README.md"
+  ],
+  "keywords": [
+    "robotics",
+    "serialport",
+    "hardware-control",
+    "nodejs",
+    "typescript"
+  ],
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "prepublishOnly": "npm run build",
+    "test": "vitest run",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "serialport": "^12.0.0"
+  },
+  "devDependencies": {
+    "vitest": "^2.0.0",
+    "@vitest/ui": "^2.0.0",
+    "vite": "^6.3.5",
+    "vite-node": "^2.0.0",
+    "typescript": "^5.3.0",
+    "@types/node": "^18.0.0"
+  },
+  "peerDependencies": {
+    "typescript": ">=4.5.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/timpietrusky/lerobot.js/tree/main/packages/node"
+  },
+  "license": "Apache-2.0",
+  "author": "Tim Pietrusky",
+  "publishConfig": {
+    "access": "public"
+  }
+}

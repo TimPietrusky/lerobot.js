@@ -1,6 +1,6 @@
 export type {
   RobotConnection,
   LiveCalibrationData,
-  WebCalibrationResults,
+  CalibrationResults,
   TeleoperationState,
 } from "@lerobot/web";

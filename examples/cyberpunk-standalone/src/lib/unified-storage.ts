@@ -3,7 +3,7 @@
  * Manages device persistence using localStorage with serial numbers as keys
  */
 
-import type { WebCalibrationResults } from "@lerobot/web";
+import type { CalibrationResults } from "@lerobot/web";
 
 export interface DeviceInfo {
   serialNumber: string;
@@ -25,7 +25,7 @@ export interface CalibrationMetadata {
 
 export interface UnifiedRobotData {
   device_info: DeviceInfo;
-  calibration?: WebCalibrationResults & {
+  calibration?: CalibrationResults & {
     device_type?: string;
     device_id?: string;
     calibrated_at?: string;
@@ -65,7 +65,7 @@ export function saveUnifiedRobotData(
 
 export function saveCalibrationData(
   serialNumber: string,
-  calibrationData: WebCalibrationResults,
+  calibrationData: CalibrationResults,
   metadata: CalibrationMetadata
 ): void {
   try {

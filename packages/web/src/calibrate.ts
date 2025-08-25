@@ -19,14 +19,14 @@ import type { RobotConnection } from "./types/robot-connection.js";
 import type { RobotHardwareConfig } from "./types/robot-config.js";
 import type {
   CalibrateConfig,
-  WebCalibrationResults,
+  CalibrationResults,
   LiveCalibrationData,
   CalibrationProcess,
 } from "./types/calibration.js";
 
 // Re-export types for external use
 export type {
-  WebCalibrationResults,
+  CalibrationResults,
   LiveCalibrationData,
   CalibrationProcess,
 } from "./types/calibration.js";
@@ -155,7 +155,7 @@ export async function calibrate(
   const stopFunction = () => shouldStop;
 
   // Start calibration process
-  const resultPromise = (async (): Promise<WebCalibrationResults> => {
+  const resultPromise = (async (): Promise<CalibrationResults> => {
     // Step 1: Set homing offsets (automatic)
     onProgress?.("⚙️ Setting motor homing offsets");
     const homingOffsets = await setHomingOffsets(
@@ -191,7 +191,7 @@ export async function calibrate(
     );
 
     // Step 5: Compile results
-    const results: WebCalibrationResults = {};
+    const results: CalibrationResults = {};
 
     for (let i = 0; i < robotConfig.motorNames.length; i++) {
       const motorName = robotConfig.motorNames[i];

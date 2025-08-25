@@ -259,8 +259,8 @@ const calibrationData = await calibrationProcess.result;`}
                 </h5>
                 <ul className="mt-1 ml-4 space-y-1 text-sm text-muted-foreground">
                   <li>
-                    • <code>result: Promise&lt;WebCalibrationResults&gt;</code>{" "}
-                    - Python-compatible format
+                    • <code>result: Promise&lt;CalibrationResults&gt;</code> -
+                    Python-compatible format
                   </li>
                   <li>
                     • <code>stop(): void</code> - Stop calibration process

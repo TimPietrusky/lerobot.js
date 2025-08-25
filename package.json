@@ -6,10 +6,7 @@
   "workspaces": [
     "packages/*"
   ],
-  "files": [
-    "dist/**/*",
-    "README.md"
-  ],
+  "private": true,
   "keywords": [
     "robotics",
     "ai",
@@ -18,30 +15,21 @@
     "lerobot"
   ],
   "scripts": {
-    "cli:find-port": "tsx src/cli/index.ts find-port",
-    "cli:calibrate": "tsx src/cli/index.ts calibrate",
-    "cli:teleoperate": "tsx src/cli/index.ts teleoperate",
     "example:cyberpunk": "cd examples/cyberpunk-standalone && pnpm dev",
     "example:iframe-test": "cd examples/iframe-dialog-test && pnpm dev",
     "example:sequential-test": "cd examples/test-sequential-operations && pnpm dev",
-    "build": "pnpm run build:cli",
-    "build:cli": "tsc --project tsconfig.cli.json",
+    "dev": "pnpm run dev:node",
+    "dev:node": "pnpm -C packages/node dev",
+    "dev:cli": "pnpm -C packages/cli dev",
+    "build:all": "pnpm -C packages/node build && pnpm -C packages/cli build",
     "build:cyberpunk": "cd examples/cyberpunk-standalone && pnpm install && pnpm build",
     "changeset": "changeset",
     "changeset:version": "changeset version",
-    "changeset:publish": "changeset publish",
-    "prepublishOnly": "pnpm run build",
-    "install-global": "pnpm run build && npm link"
-  },
-  "dependencies": {
-    "@lerobot/web": "workspace:*",
-    "log-update": "^6.1.0",
-    "serialport": "^12.0.0"
+    "changeset:publish": "changeset publish"
   },
   "devDependencies": {
     "@changesets/cli": "^2.29.5",
     "@types/node": "^22.10.5",
-    "tsx": "^4.19.2",
     "typescript": "~5.8.3"
   },
   "repository": {

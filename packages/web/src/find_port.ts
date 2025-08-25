@@ -436,3 +436,69 @@ export async function findPort(
     },
   };
 }
+
+/**
+ * Connect directly to a robot port (Python lerobot compatible)
+ * Equivalent to robot.connect() in Python lerobot
+ */
+export async function connectPort(port: SerialPort): Promise<RobotConnection> {
+  // Test connection
+  let isConnected = false;
+
+  try {
+    // Try to open the port if not already open
+    const wasOpen = port.readable !== null;
+    if (!wasOpen) {
+      await port.open({ baudRate: 1000000 });
+      // Small delay to allow port to stabilize after opening
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    // Test connection by trying basic motor communication
+    const portWrapper = new WebSerialPortWrapper(port);
+    await portWrapper.initialize();
+
+    // Try to read from motor ID 1 (most robots have at least one motor)
+    // Retry mechanism for more robust connection testing
+    let testPosition: number | null = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        testPosition = await readMotorPosition(portWrapper, 1);
+        if (testPosition !== null) break;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      } catch (retryError) {
+        if (attempt === 2) throw retryError;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    }
+
+    // If we can read a position, this is likely a working robot port
+    if (testPosition !== null) {
+      isConnected = true;
+    }
+  } catch (error) {
+    // Connection failed
+    isConnected = false;
+  }
+
+  // Get USB device metadata if available
+  let serialNumber = "unknown";
+  let usbMetadata = undefined;
+
+  try {
+    const metadata = await getStoredUSBDeviceMetadata(port);
+    serialNumber = metadata.serialNumber;
+    usbMetadata = metadata.usbMetadata;
+  } catch (error) {
+    // Metadata not available, use port info as fallback
+  }
+
+  return {
+    port,
+    name: getPortDisplayName(port),
+    isConnected,
+    serialNumber,
+    usbMetadata,
+    error: isConnected ? undefined : "Connection failed",
+  };
+}
