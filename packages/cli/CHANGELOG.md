@@ -1,5 +1,16 @@
 # lerobot
 
+## 0.3.0
+
+### Minor Changes
+
+- b2fcd70: improved dx; fixed dependencies
+
+### Patch Changes
+
+- Updated dependencies [b2fcd70]
+  - @lerobot/node@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes
