@@ -1,5 +1,11 @@
 # @lerobot/web
 
+## 0.3.0
+
+### Minor Changes
+
+- 4b4a322: added dataset recording; hf uploader; s3 uploader
+
 ## 0.2.2
 
 ### Patch Changes
