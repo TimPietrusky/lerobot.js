@@ -25,21 +25,23 @@ export interface FindPortConfig {
 }
 
 /**
+ * Discovered port information (Node.js discovery-only mode)
+ */
+export interface DiscoveredPort {
+  path: string; // Serial port path (e.g., "/dev/ttyUSB0", "COM4")
+  robotType: "so100_follower" | "so100_leader";
+}
+
+/**
  * Process object returned by findPort
  */
 export interface FindPortProcess {
-  // Python lerobot compatible methods
-  getAvailablePorts(): Promise<string[]>;
-  detectPort(): Promise<string>; // Interactive cable detection
-
-  // Result promise - Always returns RobotConnection[] (consistent API)
-  // Interactive mode: single robot in array
-  // Auto-connect mode: all successfully connected robots in array
-  result?: Promise<RobotConnection[]>;
+  // Result promise - Node.js returns discovered ports, user calls connectPort() separately
+  result: Promise<DiscoveredPort[]>;
 
   // Control
-  stop?: () => void;
+  stop: () => void;
 }
 
 // Re-export commonly used types for convenience
-export type { RobotConnection, RobotConfig, SerialPort, SerialPortInfo }; 
+export type { RobotConnection, RobotConfig, SerialPort, SerialPortInfo };

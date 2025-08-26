@@ -22,6 +22,7 @@ export type {
 export type {
   FindPortConfig,
   FindPortProcess,
+  DiscoveredPort,
 } from "./types/port-discovery.js";
 
 export type {

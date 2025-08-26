@@ -7,7 +7,7 @@
 // Core functions
 export { calibrate } from "./calibrate.js";
 export { teleoperate } from "./teleoperate.js";
-export { findPort, connectPort } from "./find_port.js";
+export { findPort } from "./find_port.js";
 export { releaseMotors } from "./release_motors.js";
 
 // Browser support utilities

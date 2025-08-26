@@ -47,6 +47,11 @@ export class NodeSerialPortWrapper {
     });
   }
 
+  // Add open method to match SerialPort interface
+  async open(): Promise<void> {
+    return this.initialize();
+  }
+
   async write(data: Uint8Array): Promise<void> {
     return new Promise((resolve, reject) => {
       if (!this.isConnected) {
@@ -64,7 +69,7 @@ export class NodeSerialPortWrapper {
     });
   }
 
-  async read(timeout: number = 1000): Promise<Uint8Array> {
+  async read(timeout: number = 1000): Promise<Buffer | null> {
     return new Promise((resolve, reject) => {
       if (!this.isConnected) {
         reject(new Error("Port not open for reading"));
@@ -78,7 +83,7 @@ export class NodeSerialPortWrapper {
       const onData = (data: Buffer) => {
         clearTimeout(timeoutId);
         this.port.removeListener("data", onData);
-        resolve(new Uint8Array(data));
+        resolve(data); // Return Buffer directly to match interface
       };
 
       this.port.once("data", onData);
@@ -94,7 +99,8 @@ export class NodeSerialPortWrapper {
     // Wait for motor response (motors need time to process command)
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    return this.read(timeout);
+    const response = await this.read(timeout);
+    return response ? new Uint8Array(response) : new Uint8Array();
   }
 
   async close(): Promise<void> {

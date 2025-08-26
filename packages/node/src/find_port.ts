@@ -11,6 +11,7 @@ import { NodeSerialPortWrapper } from "./utils/serial-port-wrapper.js";
 import type {
   FindPortConfig,
   FindPortProcess,
+  DiscoveredPort,
   RobotConnection,
 } from "./types/port-discovery.js";
 
@@ -44,7 +45,11 @@ export async function findAvailablePorts(): Promise<string[]> {
  * Connect directly to a robot port (Python lerobot compatible)
  * Equivalent to robot.connect() in Python lerobot
  */
-export async function connectPort(portPath: string): Promise<RobotConnection> {
+export async function connectPort(
+  portPath: string,
+  robotType: "so100_follower" | "so100_leader" = "so100_follower",
+  robotId: string = "robot"
+): Promise<RobotConnection> {
   // Test connection
   const port = new NodeSerialPortWrapper(portPath);
   let isConnected = false;
@@ -72,6 +77,8 @@ export async function connectPort(portPath: string): Promise<RobotConnection> {
   return {
     port: workingPort, // ← Return the initialized working port!
     name: `Robot on ${portPath}`,
+    robotType,
+    robotId,
     isConnected,
     serialNumber: portPath, // Use port path as serial number for Node.js
     error: isConnected ? undefined : "Connection failed",
@@ -79,12 +86,12 @@ export async function connectPort(portPath: string): Promise<RobotConnection> {
 }
 
 /**
- * Interactive mode: Return first available robot port
- * Similar to web's interactive mode but for Node.js
+ * Interactive mode: Return discovered robot ports (Node.js style)
+ * Unlike web version, this only discovers - user must call connectPort() separately
  */
 async function findPortInteractive(
   options: FindPortConfig
-): Promise<RobotConnection[]> {
+): Promise<DiscoveredPort[]> {
   const { onMessage } = options;
 
   onMessage?.("🔍 Searching for available robot ports...");
@@ -97,27 +104,14 @@ async function findPortInteractive(
   }
 
   onMessage?.(
-    `Found ${availablePorts.length} port(s), testing first available...`
+    `Found ${availablePorts.length} port(s), first available: ${availablePorts[0]}`
   );
 
-  // Try to connect to the first available port
-  const firstPort = availablePorts[0];
-  const connection = await connectPort(firstPort);
-
-  if (connection.isConnected) {
-    onMessage?.(`✅ Connected to robot on ${firstPort}`);
-  } else {
-    onMessage?.(`⚠️ Port ${firstPort} found but connection failed`);
-  }
-
-  // Return single robot in array (consistent with web API)
-  return [
-    {
-      ...connection,
-      robotType: "so100_follower", // Default, user can configure
-      robotId: "discovered_robot",
-    },
-  ];
+  // Return discovered ports (no connection attempt)
+  return availablePorts.map((path) => ({
+    path,
+    robotType: "so100_follower" as const, // Default type, user can override
+  }));
 }
 
 /**
@@ -195,25 +189,18 @@ async function findPortAutoConnect(
 }
 
 /**
- * Main findPort function - web-compatible API
+ * Main findPort function - Node.js discovery-only API
  *
- * Mode 1: Interactive (default) - Returns first available robot port
- * Mode 2: Auto-connect - Connects to pre-configured robots by port path
+ * Discovers available robot ports without connecting.
+ * User must call connectPort() separately to establish connections.
  */
 export async function findPort(
   config: FindPortConfig = {}
 ): Promise<FindPortProcess> {
-  const { robotConfigs, onMessage } = config;
+  const { onMessage } = config;
   let stopped = false;
 
-  // Determine mode
-  const isAutoConnectMode = robotConfigs && robotConfigs.length > 0;
-
-  onMessage?.(
-    `🤖 ${
-      isAutoConnectMode ? "Auto-connect" : "Interactive"
-    } port discovery started`
-  );
+  onMessage?.("🤖 Interactive port discovery started");
 
   // Create result promise
   const resultPromise = (async () => {
@@ -221,14 +208,10 @@ export async function findPort(
       throw new Error("Port discovery was stopped");
     }
 
-    if (isAutoConnectMode) {
-      return await findPortAutoConnect(robotConfigs!, config);
-    } else {
-      return await findPortInteractive(config);
-    }
+    return await findPortInteractive(config);
   })();
 
-  // Return process object (web-compatible API)
+  // Return process object
   return {
     result: resultPromise,
     stop: () => {

@@ -8,8 +8,14 @@
  * 4. Control robot with keyboard teleoperation
  */
 
-import { findPort, releaseMotors, calibrate, teleoperate } from "@lerobot/node";
-import type { RobotConnection } from "@lerobot/node";
+import {
+  findPort,
+  connectPort,
+  releaseMotors,
+  calibrate,
+  teleoperate,
+} from "@lerobot/node";
+import type { RobotConnection, DiscoveredPort } from "@lerobot/node";
 
 // Utility for user confirmation
 import { createInterface } from "readline";
@@ -33,27 +39,27 @@ async function quickStartDemo() {
   console.log("=====================================\n");
 
   try {
-    // Step 1: Find connected robot
+    // Step 1: Find available robot ports
     console.log("📡 Step 1: Looking for connected robots...");
     const findProcess = await findPort();
-    const robots = await findProcess.result;
+    const discoveredPorts = await findProcess.result;
 
-    if (robots.length === 0) {
+    if (discoveredPorts.length === 0) {
       throw new Error("No robots found. Please check your connections.");
     }
 
-    const robot = robots[0];
-    console.log(`✅ Found robot: ${robot.name} on ${robot.port.path}`);
+    console.log(`✅ Found robot on ${discoveredPorts[0].path}`);
 
-    // Configure robot (normally you'd save this configuration)
-    robot.robotType = "so100_follower";
-    robot.robotId = "demo_robot_arm";
-
-    console.log(
-      `🔧 Configured as: ${robot.robotType} (ID: ${robot.robotId})\n`
+    // Step 2: Connect to the first robot found
+    console.log("🔌 Step 2: Connecting to robot...");
+    const robot = await connectPort(
+      discoveredPorts[0].path,
+      "so100_follower",
+      "demo_robot_arm"
     );
+    console.log(`✅ Connected: ${robot.robotType} (ID: ${robot.robotId})\n`);
 
-    // Step 2: Release motors for calibration setup
+    // Step 3: Release motors for calibration setup
     const shouldRelease = await askUser(
       "🔓 Release motors for manual positioning? (y/n): "
     );
@@ -67,7 +73,7 @@ async function quickStartDemo() {
       );
     }
 
-    // Step 3: Calibrate the robot
+    // Step 4: Calibrate the robot
     const shouldCalibrate = await askUser("🎯 Run calibration? (y/n): ");
     if (shouldCalibrate.toLowerCase() === "y") {
       console.log("\n🎯 Step 3: Starting calibration...");
@@ -104,7 +110,7 @@ async function quickStartDemo() {
       });
     }
 
-    // Step 4: Teleoperation
+    // Step 5: Teleoperation
     const shouldTeleoperate = await askUser(
       "\n🎮 Start keyboard teleoperation? (y/n): "
     );
@@ -114,7 +120,7 @@ async function quickStartDemo() {
 
       const teleop = await teleoperate({
         robot: robot as RobotConnection,
-        teleop: { type: "keyboard", stepSize: 25 },
+        teleop: { type: "keyboard" },
         onStateUpdate: (state) => {
           if (state.isActive) {
             const motorInfo = state.motorConfigs
@@ -157,9 +163,7 @@ async function quickStartDemo() {
     console.log("\n🔧 Troubleshooting tips:");
     console.log("- Check robot is connected and powered on");
     console.log("- Verify correct serial port permissions");
-    console.log(
-      "- Try running 'npx @lerobot/node find-port' to test connection"
-    );
+    console.log("- Try running 'npx lerobot find-port' to test connection");
     process.exit(1);
   }
 }

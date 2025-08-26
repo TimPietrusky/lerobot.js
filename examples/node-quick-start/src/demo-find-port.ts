@@ -4,8 +4,8 @@
  * Demonstrates how to find and connect to robot hardware programmatically
  */
 
-import { findPort } from "@lerobot/node";
-import type { RobotConnection } from "@lerobot/node";
+import { findPort, connectPort } from "@lerobot/node";
+import type { RobotConnection, DiscoveredPort } from "@lerobot/node";
 
 async function demoFindPort() {
   console.log("🔍 Port Discovery Demo");
@@ -19,9 +19,9 @@ async function demoFindPort() {
     const findProcess = await findPort({
       onMessage: (message) => console.log(`   📡 ${message}`),
     });
-    const robots = await findProcess.result;
+    const discoveredPorts = await findProcess.result;
 
-    if (robots.length === 0) {
+    if (discoveredPorts.length === 0) {
       console.log("❌ No robots found.");
       console.log("\n🔧 Make sure your robot is:");
       console.log("   - Connected via USB");
@@ -30,23 +30,27 @@ async function demoFindPort() {
       return;
     }
 
-    console.log(`\n✅ Found ${robots.length} robot(s):`);
-    robots.forEach((robot, index) => {
-      console.log(`   ${index + 1}. ${robot.name}`);
-      console.log(`      Port: ${robot.port.path}`);
-      console.log(`      Connected: ${robot.isConnected ? "✅" : "❌"}`);
-      console.log(`      Serial: ${robot.serialNumber}`);
+    console.log(`\n✅ Found ${discoveredPorts.length} robot port(s):`);
+    discoveredPorts.forEach((port, index) => {
+      console.log(`   ${index + 1}. ${port.robotType} on ${port.path}`);
+      console.log(`      Port: ${port.path}`);
+      console.log(`      Type: ${port.robotType}`);
     });
 
-    // Demo 2: Configure discovered robots
-    console.log("\n🔧 Demo 2: Configuring discovered robots");
-    
-    const robot = robots[0] as RobotConnection;
-    robot.robotType = "so100_follower";
-    robot.robotId = "demo_robot";
+    // Demo 2: Connect to discovered robot
+    console.log("\n🔌 Demo 2: Connecting to discovered robot");
 
-    console.log(`✅ Configured robot as: ${robot.robotType} (ID: ${robot.robotId})`);
+    const robot = await connectPort(
+      discoveredPorts[0].path,
+      "so100_follower",
+      "demo_robot"
+    );
+
+    console.log(
+      `✅ Connected to robot: ${robot.robotType} (ID: ${robot.robotId})`
+    );
     console.log(`   Port: ${robot.port.path}`);
+    console.log(`   Connected: ${robot.isConnected ? "✅" : "❌"}`);
     console.log(`   Baudrate: ${robot.port.baudRate}`);
 
     // Demo 3: Connection details
@@ -65,11 +69,11 @@ async function demoFindPort() {
 
     const silentProcess = await findPort(); // No onMessage callback
     const silentRobots = await silentProcess.result;
-    
+
     console.log(`Found ${silentRobots.length} robot(s) silently`);
 
     console.log("\n🎉 Port discovery demo completed!");
-    console.log("\nℹ️  Note: For interactive cable detection, use the CLI:");
+    console.log("\nℹ️  Note: For interactive port discovery, use the CLI:");
     console.log("   npx lerobot find-port");
   } catch (error) {
     console.error("\n❌ Port discovery failed:", error.message);
@@ -78,7 +82,7 @@ async function demoFindPort() {
     console.log("- Verify robot is powered on");
     console.log("- Try different USB ports/cables");
     console.log("- On Linux: Check serial port permissions");
-    console.log("- For interactive port detection, use: npx lerobot find-port");
+    console.log("- For interactive port discovery, use: npx lerobot find-port");
     process.exit(1);
   }
 }

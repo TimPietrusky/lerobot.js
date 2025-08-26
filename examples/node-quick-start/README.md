@@ -49,16 +49,14 @@ pnpm demo:teleoperate
 The main demo (`src/main.ts`) shows the complete workflow:
 
 ```typescript
-import { findPort, releaseMotors, calibrate, teleoperate } from "@lerobot/node";
+import { findPort, connectPort, releaseMotors, calibrate, teleoperate } from "@lerobot/node";
 
-// 1. Find and connect to robot
-const findProcess = await findPort({ interactive: true });
+// 1. Find available robots
+const findProcess = await findPort();
 const robots = await findProcess.result;
-const robot = robots[0];
 
-// 2. Configure robot type
-robot.robotType = "so100_follower";
-robot.robotId = "my_robot_arm";
+// 2. Connect to first robot found
+const robot = await connectPort(robots[0].path, "so100_follower", "my_robot_arm");
 
 // 3. Release motors for manual positioning
 await releaseMotors(robot);
@@ -82,13 +80,13 @@ You can also use the CLI directly:
 
 ```bash
 # Find available ports
-npx @lerobot/node find-port --interactive
+npx lerobot find-port
 
 # Calibrate robot
-npx @lerobot/node calibrate --robot.type=so100_follower --robot.port=/dev/ttyUSB0
+npx lerobot calibrate --robot.type so100_follower --robot.port /dev/ttyUSB0 --robot.id my_robot
 
 # Control robot
-npx @lerobot/node teleoperate --robot.type=so100_follower --robot.port=/dev/ttyUSB0
+npx lerobot teleoperate --robot.type so100_follower --robot.port /dev/ttyUSB0 --robot.id my_robot
 ```
 
 ## Development

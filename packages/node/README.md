@@ -21,45 +21,127 @@ yarn add @lerobot/node
 
 ```typescript
 import {
+  findPort,
   connectPort,
   releaseMotors,
   calibrate,
   teleoperate,
 } from "@lerobot/node";
 
-// 1. Connect to robot on specific port
-const robot = await connectPort("/dev/ttyUSB0", "so100_follower", "my_robot");
+// 1. find available robot ports
+console.log("🔍 finding available robot ports...");
+const findProcess = await findPort();
+const robots = await findProcess.result;
 
-// 2. Release motors for manual positioning
+if (robots.length === 0) {
+  console.log("❌ no robots found. check connections.");
+  process.exit(1);
+}
+
+// 2. connect to the first robot found
+console.log(`✅ found ${robots.length} robot(s). connecting to first one...`);
+const robot = await connectPort(robots[0].path, robots[0].robotType);
+
+// 3. release motors for manual positioning
+console.log("🔓 releasing motors for manual positioning...");
 await releaseMotors(robot);
 
-// 3. Calibrate motors by moving through full range
+// 4. calibrate motors by moving through full range
+console.log("⚙️ starting calibration...");
 const calibrationProcess = await calibrate({
   robot,
   onProgress: (message) => console.log(message),
-  onLiveUpdate: (data) => console.log("Live positions:", data),
+  onLiveUpdate: (data) => console.log("live positions:", data),
 });
 
-// Move robot through its range, then stop calibration
-console.log("Move robot through range, press Enter when done...");
+// move robot through its range, then stop calibration
+console.log("👋 move robot through full range, press enter when done...");
 process.stdin.once("data", () => {
   calibrationProcess.stop();
 });
 
 const calibrationData = await calibrationProcess.result;
+console.log("✅ calibration complete!");
 
-// 4. Control robot with keyboard
+// 5. control robot with keyboard
+console.log("🎮 starting keyboard control...");
 const teleop = await teleoperate({
   robot,
+  calibrationData,
   teleop: { type: "keyboard" },
 });
 teleop.start();
 
-// Stop control
-setTimeout(() => teleop.stop(), 30000);
+// stop control after 30 seconds
+setTimeout(() => {
+  teleop.stop();
+  console.log("🛑 control stopped");
+}, 30000);
+```
+
+## How It Works
+
+### **Beginner Flow: `findPort()` → `connectPort()` → Use Robot**
+
+Most users should start with `findPort()` for discovery, then `connectPort()` for connection:
+
+```typescript
+// ✅ recommended: discover then connect
+const findProcess = await findPort();
+const robots = await findProcess.result;
+const robot = await connectPort(robots[0].path, robots[0].robotType);
+```
+
+### **Advanced: Direct Connection with `connectPort()`**
+
+Only use `connectPort()` when you already know the exact port:
+
+```typescript
+// ⚡ advanced: direct connection to known port
+const robot = await connectPort("/dev/ttyUSB0", "so100_follower");
 ```
 
 ## Core API
+
+### `findPort(config?): Promise<FindPortProcess>`
+
+Discovers available robotics hardware on serial ports. Unlike the web version, this only discovers ports - connection happens separately with `connectPort()`.
+
+```typescript
+// Discover all available robots
+const findProcess = await findPort();
+const robots = await findProcess.result;
+
+console.log(`Found ${robots.length} robot(s):`);
+robots.forEach((robot) => {
+  console.log(`- ${robot.robotType} on ${robot.path}`);
+});
+
+// Connect to specific robot
+const robot = await connectPort(robots[0].path, robots[0].robotType);
+```
+
+#### Options
+
+- `config?: FindPortConfig` - Optional configuration
+  - `onMessage?: (message: string) => void` - Progress messages callback
+
+#### Returns: `FindPortProcess`
+
+- `result: Promise<DiscoveredRobot[]>` - Array of discovered robots with `path`, `robotType`, and other metadata
+- `stop(): void` - Cancel discovery process
+
+#### DiscoveredRobot Structure
+
+```typescript
+interface DiscoveredRobot {
+  path: string; // Serial port path (e.g., "/dev/ttyUSB0")
+  robotType: "so100_follower" | "so100_leader";
+  // Additional metadata...
+}
+```
+
+---
 
 ### `connectPort(port): Promise<RobotConnection>`
 
@@ -137,23 +219,53 @@ writeFileSync(
 - `result: Promise<CalibrationResults>` - **Python-compatible** calibration data
 - `stop(): void` - Stop calibration process
 
-#### Calibration Data Format (Python Compatible)
+#### Calibration Data Format
+
+**Python Compatible**: This format is identical to Python lerobot calibration files - you can use the same calibration data across both implementations.
 
 ```json
 {
   "shoulder_pan": {
     "id": 1,
     "drive_mode": 0,
-    "homing_offset": 47,
-    "range_min": 985,
-    "range_max": 3085
+    "homing_offset": 14,
+    "range_min": 1015,
+    "range_max": 3128
   },
-  "elbow_flex": {
+  "shoulder_lift": {
     "id": 2,
     "drive_mode": 0,
-    "homing_offset": 1013,
-    "range_min": 1200,
-    "range_max": 2800
+    "homing_offset": 989,
+    "range_min": 965,
+    "range_max": 3265
+  },
+  "elbow_flex": {
+    "id": 3,
+    "drive_mode": 0,
+    "homing_offset": -879,
+    "range_min": 820,
+    "range_max": 3051
+  },
+  "wrist_flex": {
+    "id": 4,
+    "drive_mode": 0,
+    "homing_offset": 31,
+    "range_min": 758,
+    "range_max": 3277
+  },
+  "wrist_roll": {
+    "id": 5,
+    "drive_mode": 0,
+    "homing_offset": -37,
+    "range_min": 2046,
+    "range_max": 3171
+  },
+  "gripper": {
+    "id": 6,
+    "drive_mode": 0,
+    "homing_offset": -1173,
+    "range_min": 2038,
+    "range_max": 3528
   }
 }
 ```
@@ -178,7 +290,7 @@ const teleop = await teleoperate({
   },
 });
 
-// Start keyboard control (shows control instructions)
+// Start keyboard control
 teleop.start();
 
 // Control will be active until stopped
@@ -258,7 +370,7 @@ npx lerobot release-motors --robot.type so100_follower --robot.port /dev/ttyUSB0
 
 **CLI commands are identical to Python lerobot** - same syntax, same behavior, seamless migration.
 
-## System Requirements
+## Node.js Requirements
 
 - **Node.js 18+**
 - **Serial port access** (may require permissions on Linux/macOS)
@@ -280,40 +392,9 @@ sudo chmod 666 /dev/tty.usbserial-*
 
 ## Hardware Support
 
-Currently supports **SO-100 follower and leader arms** with STS3215 motors.
+Currently supports SO-100 follower and leader arms with STS3215 motors. More devices coming soon.
 
-### Supported Robots
-
-- `so100_follower` - SO-100 follower arm (6 DOF)
-- `so100_leader` - SO-100 leader arm (6 DOF)
-
-### Communication Protocol
-
-- **Feetech STS3215** servo protocol
-- **1,000,000 baud** (matches Python lerobot)
-- **Event-driven communication** for optimal performance
-
-## Development
-
-### Architecture
-
-Built with **Python lerobot compatibility** as the primary goal:
-
-- **Identical command syntax** and behavior
-- **Same calibration file format**
-- **Matching motor control protocols**
-- **Compatible timing and performance**
-
-### Performance Optimizations
-
-- **Event-driven serial communication** using `serialport` package
-- **Progressive timeout patterns** with retry logic
-- **Optimized motor update loops** at 120 Hz
-- **Memory leak prevention** with proper event cleanup
-
-## Migration from Python lerobot
-
-**@lerobot/node is designed for seamless migration:**
+## Migration from lerobot.py
 
 ```python
 # Python lerobot
@@ -325,5 +406,3 @@ npx lerobot calibrate --robot.type so100_follower --robot.port /dev/ttyUSB0
 
 - **Same commands** - just replace `python -m lerobot.` with `npx lerobot`
 - **Same calibration files** - Python and Node.js calibrations are interchangeable
-- **Same motor behavior** - identical timing, step sizes, and control feel
-- **Same output format** - error messages and prompts match Python exactly

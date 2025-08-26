@@ -4,8 +4,8 @@
  * Demonstrates different ways to control robot motors
  */
 
-import { findPort, teleoperate } from "@lerobot/node";
-import type { RobotConnection } from "@lerobot/node";
+import { findPort, connectPort, teleoperate } from "@lerobot/node";
+import type { RobotConnection, DiscoveredPort } from "@lerobot/node";
 import { createInterface } from "readline";
 
 function askUser(question: string): Promise<string> {
@@ -27,22 +27,27 @@ async function demoTeleoperate() {
   console.log("=====================\n");
 
   try {
-    // Step 1: Find connected robot
+    // Step 1: Find available robot ports
     console.log("📡 Looking for connected robots...");
     const findProcess = await findPort();
-    const robots = await findProcess.result;
+    const discoveredPorts = await findProcess.result;
 
-    if (robots.length === 0) {
+    if (discoveredPorts.length === 0) {
       throw new Error("No robots found. Please connect your robot first.");
     }
 
-    const robot = robots[0] as RobotConnection;
-    robot.robotType = "so100_follower";
-    robot.robotId = "teleop_demo";
+    console.log(`✅ Found robot on ${discoveredPorts[0].path}`);
 
-    console.log(`✅ Found robot: ${robot.name} on ${robot.port.path}\n`);
+    // Step 2: Connect to robot
+    console.log("🔌 Connecting to robot...");
+    const robot = await connectPort(
+      discoveredPorts[0].path,
+      "so100_follower",
+      "teleop_demo"
+    );
+    console.log(`✅ Connected: ${robot.robotType} (ID: ${robot.robotId})\n`);
 
-    // Step 2: Choose teleoperation mode
+    // Step 3: Choose teleoperation mode
     console.log("🎯 Choose teleoperation mode:");
     console.log("1. Keyboard Control (interactive)");
     console.log("2. Direct Control (programmatic)");
@@ -86,8 +91,7 @@ async function demoKeyboardControl(robot: RobotConnection) {
     robot,
     teleop: {
       type: "keyboard",
-      stepSize: 25, // Small steps for safety
-      updateRate: 60, // Smooth control
+      // Using optimized defaults for smooth control
     },
     onStateUpdate: (state) => {
       if (state.isActive) {
