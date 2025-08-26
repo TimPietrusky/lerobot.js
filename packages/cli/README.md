@@ -1,12 +1,12 @@
 # lerobot
 
-Python lerobot compatible CLI for Node.js. Provides the same command-line interface as Python lerobot with identical behavior and syntax.
+Control robots with Node.js (serialport) on the CLI, inspired by [LeRobot](https://github.com/huggingface/lerobot)
 
-## Installation
+## Install
 
 ```bash
-# Use directly with npx (recommended)
-npx lerobot find-port
+# Use directly with npx
+npx lerobot@latest find-port
 
 # Or install globally
 npm install -g lerobot
@@ -20,8 +20,7 @@ lerobot find-port
 Discover robot port with interactive cable detection. Matches Python lerobot's `find_port.py` exactly.
 
 ```bash
-# Interactive cable detection (always enabled, like Python lerobot)
-lerobot find-port
+npx lerobot@latest find-port
 ```
 
 This command follows Python lerobot's behavior exactly:
@@ -37,10 +36,7 @@ This command follows Python lerobot's behavior exactly:
 Calibrate robot motors and save calibration data to Hugging Face cache.
 
 ```bash
-lerobot calibrate \
-  --robot.type=so100_follower \
-  --robot.port=/dev/ttyUSB0 \
-  --robot.id=my_follower_arm
+npx lerobot@latest calibrate --robot.type=so100_follower --robot.port=/dev/ttyUSB0 --robot.id=my_follower_arm
 ```
 
 **Options:**
@@ -50,17 +46,22 @@ lerobot calibrate \
 - `--robot.id` - Robot identifier (default: `default`)
 - `--output` - Custom output path for calibration file
 
-**Compatible with:** `python -m lerobot calibrate`
+**Compatible with:** `python -m lerobot.calibrate`
+
+Calibration files are saved to the same location as Python lerobot:
+
+```
+~/.cache/huggingface/lerobot/calibration/robots/{robot_type}/{robot_id}.json
+```
+
+This ensures calibration data is shared between Python and Node.js implementations.
 
 ### Teleoperate
 
 Control robot through keyboard teleoperation.
 
 ```bash
-lerobot teleoperate \
-  --robot.type=so100_follower \
-  --robot.port=/dev/ttyUSB0 \
-  --robot.id=my_follower_arm
+npx lerobot@latest teleoperate --robot.type=so100_follower --robot.port=/dev/ttyUSB0 --robot.id=my_follower_arm
 ```
 
 **Options:**
@@ -82,17 +83,14 @@ lerobot teleoperate \
 - `y/h` - Motor 6 open/close
 - `Ctrl+C` - Stop and exit
 
-**Compatible with:** `python -m lerobot teleoperate`
+**Compatible with:** `python -m lerobot.teleoperate`
 
 ### Release Motors
 
 Release robot motors for manual movement.
 
 ```bash
-lerobot release-motors \
-  --robot.type=so100_follower \
-  --robot.port=/dev/ttyUSB0 \
-  --robot.id=my_follower_arm
+npx lerobot@latest release-motors --robot.type=so100_follower --robot.port=/dev/ttyUSB0 --robot.id=my_follower_arm
 ```
 
 **Options:**
@@ -102,92 +100,28 @@ lerobot release-motors \
 - `--robot.id` - Robot identifier (default: `default`)
 - `--motors` - Specific motor IDs to release (comma-separated)
 
-**Compatible with:** `python -m lerobot release-motors`
-
-## Python lerobot Compatibility
-
-This CLI provides 100% compatible commands with Python lerobot:
-
-| Python lerobot                     | Node.js lerobot              | Status        |
-| ---------------------------------- | ---------------------------- | ------------- |
-| `python -m lerobot find_port`      | `npx lerobot find-port`      | ✅ Compatible |
-| `python -m lerobot calibrate`      | `npx lerobot calibrate`      | ✅ Compatible |
-| `python -m lerobot teleoperate`    | `npx lerobot teleoperate`    | ✅ Compatible |
-| `python -m lerobot release-motors` | `npx lerobot release-motors` | ✅ Compatible |
-
-### Calibration Data Compatibility
-
-Calibration files are saved to the same location as Python lerobot:
-
-```
-~/.cache/huggingface/lerobot/calibration/robots/{robot_type}/{robot_id}.json
-```
-
-This ensures calibration data is shared between Python and Node.js implementations.
+**Note:** This command is specific to our Node.js implementation for convenient motor management.
 
 ## Examples
 
 ### Complete Workflow
 
 ```bash
-# 1. Find your robot (interactive mode)
-npx lerobot find-port --interactive
+# 1. Find your robot
+npx lerobot@latest find-port
 # Output: Detected port: /dev/ttyUSB0
 
 # 2. Calibrate the robot
-npx lerobot calibrate \
-  --robot.type=so100_follower \
-  --robot.port=/dev/ttyUSB0 \
-  --robot.id=my_arm
+npx lerobot@latest calibrate --robot.type=so100_follower --robot.port=/dev/ttyUSB0 --robot.id=my_arm
 
 # 3. Control the robot
-npx lerobot teleoperate \
-  --robot.type=so100_follower \
-  --robot.port=/dev/ttyUSB0 \
-  --robot.id=my_arm
+npx lerobot@latest teleoperate --robot.type=so100_follower --robot.port=/dev/ttyUSB0 --robot.id=my_arm --teleop.type=keyboard
 
 # 4. Release motors when done
-npx lerobot release-motors \
-  --robot.type=so100_follower \
-  --robot.port=/dev/ttyUSB0 \
-  --robot.id=my_arm
+npx lerobot@latest release-motors --robot.type=so100_follower --robot.port=/dev/ttyUSB0 --robot.id=my_arm
 ```
-
-### Automation Scripts
-
-```bash
-#!/bin/bash
-# Automated calibration script
-
-ROBOT_TYPE="so100_follower"
-ROBOT_PORT="/dev/ttyUSB0"
-ROBOT_ID="production_arm_1"
-
-echo "Starting automated calibration..."
-npx lerobot calibrate \
-  --robot.type=$ROBOT_TYPE \
-  --robot.port=$ROBOT_PORT \
-  --robot.id=$ROBOT_ID
-
-echo "Calibration complete. Starting teleoperation..."
-npx lerobot teleoperate \
-  --robot.type=$ROBOT_TYPE \
-  --robot.port=$ROBOT_PORT \
-  --robot.id=$ROBOT_ID \
-  --duration=60  # Run for 60 seconds
-```
-
-## Requirements
-
-- Node.js 18+
-- Compatible with Windows, macOS, and Linux
-- Same hardware requirements as Python lerobot
 
 ## Related Packages
 
-- **[@lerobot/node](../node/)** - Node.js library for programmatic control
-- **[@lerobot/web](../web/)** - Browser library for web applications
-
-## License
-
-Apache-2.0
+- **[@lerobot/node](../node/)** - Node.js library based on serialport
+- **[@lerobot/web](../web/)** - Browser library for web applications based on WebSerial and WebUSB
