@@ -22,27 +22,44 @@ yarn add @lerobot/web
 ```typescript
 import { findPort, releaseMotors, calibrate, teleoperate } from "@lerobot/web";
 
-// 1. find and connect to hardware like a robot arm
+// 1. find available robot ports (shows browser port dialog)
+console.log("🔍 finding available robot ports...");
 const findProcess = await findPort();
 const robots = await findProcess.result;
-const robot = robots[0];
 
-// 2. release the motors and put them into the homing position
+if (robots.length === 0) {
+  console.log("❌ no robots found. check connections and try again.");
+  return;
+}
+
+// 2. connect to the first robot found
+console.log(`✅ found ${robots.length} robot(s). using first one...`);
+const robot = robots[0]; // already connected from findPort
+
+// 3. release motors for manual positioning
+console.log("🔓 releasing motors for manual positioning...");
 await releaseMotors(robot);
 
-// 3. calibrate the motors by moving each motor through its full range of motion
+// 4. calibrate motors by moving through full range
+console.log("⚙️ starting calibration...");
 const calibrationProcess = await calibrate({
   robot,
   onProgress: (message) => console.log(message),
-  onLiveUpdate: (data) => console.log("Live positions:", data),
+  onLiveUpdate: (data) => console.log("live positions:", data),
 });
 
-// when done, stop calibration and get the min/max ranges for each motor
-// which we need to control the robot in its defined ranges
-calibrationProcess.stop();
-const calibrationData = await calibrationProcess.result;
+// move robot through its range, then stop calibration
+console.log("👋 move robot through full range, then stop calibration...");
+// in a real app, you'd have a button to stop calibration
+setTimeout(() => {
+  calibrationProcess.stop();
+}, 10000); // stop after 10 seconds for demo
 
-// 4. start controlling the robot arm with your keyboard
+const calibrationData = await calibrationProcess.result;
+console.log("✅ calibration complete!");
+
+// 5. control robot with keyboard
+console.log("🎮 starting keyboard control...");
 const teleop = await teleoperate({
   robot,
   calibrationData,
@@ -50,9 +67,29 @@ const teleop = await teleoperate({
 });
 teleop.start();
 
-// stop any control
-teleop.stop();
+// stop control after 30 seconds
+setTimeout(() => {
+  teleop.stop();
+  console.log("🛑 control stopped");
+}, 30000);
 ```
+
+## How It Works
+
+### **`findPort()` - Discovery + Connection in One Step**
+
+In the browser, `findPort()` handles both discovery AND connection testing. It returns ready-to-use robot connections:
+
+```typescript
+// ✅ browser workflow: find and connect in one step
+const findProcess = await findPort();
+const robots = await findProcess.result;
+const robot = robots[0]; // ready to use - already connected and tested!
+```
+
+**Why no separate `connectPort()`?** The browser's WebSerial API requires user interaction for port access, so `findPort()` handles everything in one user-friendly flow.
+
+**Need direct port connection?** Use `@lerobot/node` which provides `connectPort()` for server-side applications where you know the exact port path (e.g., `"/dev/ttyUSB0"`).
 
 ## Core API
 
@@ -185,21 +222,57 @@ const calibrationData = await calibrationProcess.result;
 
 #### Returns: `CalibrationProcess`
 
-- `result: Promise<WebCalibrationResults>` - Calibration data (Python-compatible format)
+- `result: Promise<CalibrationResults>` - Calibration data (Python-compatible format)
 - `stop(): void` - Stop calibration process
 
 #### Calibration Data Format
 
-```typescript
+**Python Compatible**: This format is identical to Python lerobot calibration files.
+
+```json
 {
   "shoulder_pan": {
     "id": 1,
     "drive_mode": 0,
-    "homing_offset": 47,
-    "range_min": 985,
-    "range_max": 3085
+    "homing_offset": 14,
+    "range_min": 1015,
+    "range_max": 3128
   },
-  // ... other motors
+  "shoulder_lift": {
+    "id": 2,
+    "drive_mode": 0,
+    "homing_offset": 989,
+    "range_min": 965,
+    "range_max": 3265
+  },
+  "elbow_flex": {
+    "id": 3,
+    "drive_mode": 0,
+    "homing_offset": -879,
+    "range_min": 820,
+    "range_max": 3051
+  },
+  "wrist_flex": {
+    "id": 4,
+    "drive_mode": 0,
+    "homing_offset": 31,
+    "range_min": 758,
+    "range_max": 3277
+  },
+  "wrist_roll": {
+    "id": 5,
+    "drive_mode": 0,
+    "homing_offset": -37,
+    "range_min": 2046,
+    "range_max": 3171
+  },
+  "gripper": {
+    "id": 6,
+    "drive_mode": 0,
+    "homing_offset": -1173,
+    "range_min": 2038,
+    "range_max": 3528
+  }
 }
 ```
 

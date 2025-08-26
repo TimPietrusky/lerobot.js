@@ -19,7 +19,7 @@ import {
   releaseMotors,
   type CalibrationProcess,
   type LiveCalibrationData,
-  type WebCalibrationResults,
+  type CalibrationResults,
   type RobotConnection,
 } from "@lerobot/web";
 import {
@@ -42,7 +42,7 @@ export function CalibrationView({ robot }: CalibrationViewProps) {
   const [calibrationProcess, setCalibrationProcess] =
     useState<CalibrationProcess | null>(null);
   const [calibrationResults, setCalibrationResults] =
-    useState<WebCalibrationResults | null>(null);
+    useState<CalibrationResults | null>(null);
   const { toast } = useToast();
 
   // Load existing calibration data from unified storage
@@ -165,7 +165,7 @@ export function CalibrationView({ robot }: CalibrationViewProps) {
             readCount: Object.keys(liveData || {}).length > 0 ? 100 : 0,
           };
 
-          // Use the result directly as WebCalibrationResults
+          // Use the result directly as CalibrationResults
           saveCalibrationData(robot.serialNumber, result, metadata);
         }
 

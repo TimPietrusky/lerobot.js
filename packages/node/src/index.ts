@@ -1,20 +1,14 @@
 /**
- * @lerobot/web - Web-based robotics control using WebSerial API
+ * @lerobot/node - Node.js-based robotics control using SerialPort API
  *
- * Control robotics hardware directly from the browser using web APIs.
+ * Control robotics hardware directly from Node.js applications, CLI tools, and desktop software.
  */
 
 // Core functions
 export { calibrate } from "./calibrate.js";
 export { teleoperate } from "./teleoperate.js";
-export { findPort } from "./find_port.js";
+export { findPort, connectPort } from "./find_port.js";
 export { releaseMotors } from "./release_motors.js";
-
-// Browser support utilities
-export {
-  isWebSerialSupported,
-  isWebUSBSupported,
-} from "./utils/browser-support.js";
 
 // Types
 export type {
@@ -28,6 +22,7 @@ export type {
 export type {
   FindPortConfig,
   FindPortProcess,
+  DiscoveredPort,
 } from "./types/port-discovery.js";
 
 export type {
@@ -52,7 +47,7 @@ export type {
 } from "./types/robot-config.js";
 
 // Utilities (advanced users)
-export { WebSerialPortWrapper } from "./utils/serial-port-wrapper.js";
+export { NodeSerialPortWrapper } from "./utils/serial-port-wrapper.js";
 export {
   readAllMotorPositions,
   readMotorPosition,
@@ -62,7 +57,8 @@ export {
   SO100_KEYBOARD_CONTROLS,
 } from "./robots/so100_config.js";
 export { KEYBOARD_TELEOPERATOR_DEFAULTS } from "./teleoperators/index.js";
-
-// Record
-export { LeRobotDatasetRecorder } from "./record.js";
-export { LeRobotHFUploader } from "./hf_uploader.js";
+export {
+  getHfHome,
+  getHfLerobotHome,
+  getCalibrationDir,
+} from "./utils/constants.js";

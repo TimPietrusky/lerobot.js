@@ -1,0 +1,52 @@
+{
+  "name": "lerobot",
+  "version": "0.1.0",
+  "description": "CLI for lerobot.js",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "lerobot": "./dist/cli.js"
+  },
+  "files": [
+    "dist/**/*",
+    "README.md"
+  ],
+  "keywords": [
+    "robotics",
+    "cli",
+    "lerobot",
+    "python-compatible",
+    "hardware-control"
+  ],
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite-node src/cli.ts",
+    "prepublishOnly": "npm run build",
+    "test": "echo 'No tests defined'"
+  },
+  "dependencies": {
+    "@lerobot/node": "file:../node",
+    "chalk": "^5.3.0",
+    "commander": "^11.0.0",
+    "serialport": "^12.0.0"
+  },
+  "devDependencies": {
+    "vite": "^6.3.5",
+    "vite-node": "^2.0.0",
+    "typescript": "^5.3.0",
+    "@types/node": "^18.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/timpietrusky/lerobot.js/tree/main/packages/cli"
+  },
+  "license": "Apache-2.0",
+  "author": "Tim Pietrusky",
+  "publishConfig": {
+    "access": "public"
+  }
+}

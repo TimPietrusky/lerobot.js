@@ -34,13 +34,13 @@ Reconnect the USB cable.
 ### check follower arm
 
 ```
-python -m lerobot.check_motors --robot.port=COM4
+python -m lerobot.setup_motors --robot.port=COM4 --robot.type=so100_follower
 ```
 
 ### check leader arm
 
 ```
-python -m lerobot.check_motors --teleop.port=COM3
+python -m lerobot.setup_motors --teleop.port=COM3 --robot.type=so100_leader
 ```
 
 **If you see this - you're lucky! Skip to calibration:**

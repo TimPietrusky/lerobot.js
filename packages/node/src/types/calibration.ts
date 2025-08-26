@@ -1,5 +1,5 @@
 /**
- * Calibration-related types for web implementation
+ * Calibration-related types for Node.js implementation
  */
 
 import type { RobotConnection } from "./robot-connection.js";
@@ -23,6 +23,7 @@ export interface CalibrateConfig {
   robot: RobotConnection;
   onLiveUpdate?: (data: LiveCalibrationData) => void;
   onProgress?: (message: string) => void;
+  outputPath?: string; // Node.js specific: custom output path for calibration file
 }
 
 /**

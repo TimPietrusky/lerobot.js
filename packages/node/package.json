@@ -1,7 +1,7 @@
 {
-  "name": "@lerobot/web",
-  "version": "0.3.0",
-  "description": "Web-based robotics control using WebSerial API",
+  "name": "@lerobot/node",
+  "version": "0.1.0",
+  "description": "Node.js-based robotics control using SerialPort",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -29,50 +29,48 @@
   ],
   "keywords": [
     "robotics",
-    "webserial",
+    "serialport",
     "hardware-control",
-    "browser",
+    "nodejs",
     "typescript"
   ],
   "scripts": {
-    "build": "tsc --project tsconfig.build.json",
-    "watch": "tsc --project tsconfig.build.json --watch",
+    "build": "vite build",
+    "dev": "vite build --watch",
     "lint": "eslint src --ext .ts,.tsx --report-unused-disable-directives --max-warnings 0",
     "lint:fix": "eslint src --ext .ts,.tsx --fix",
     "prepublishOnly": "npm run build",
-    "dev": "vitest --watch",
     "test": "vitest run",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage"
   },
+  "dependencies": {
+    "serialport": "^12.0.0"
+  },
   "devDependencies": {
-    "@typescript-eslint/eslint-plugin": "^6.0.0",
-    "@typescript-eslint/parser": "^6.0.0",
-    "@vitest/ui": "^2.1.9",
-    "eslint": "^8.0.0",
-    "jsdom": "^24.1.3",
+    "@types/node": "^18.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.41.0",
+    "@typescript-eslint/parser": "^8.41.0",
+    "@vitest/ui": "^2.0.0",
+    "eslint": "^9.34.0",
     "typescript": "^5.3.0",
     "vite": "^6.3.5",
-    "vitest": "^2.1.9"
+    "vite-node": "^2.0.0",
+    "vitest": "^2.0.0"
   },
   "peerDependencies": {
     "typescript": ">=4.5.0"
   },
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "repository": {
     "type": "git",
-    "url": "https://github.com/timpietrusky/lerobot.js/tree/main/packages/web"
+    "url": "https://github.com/timpietrusky/lerobot.js/tree/main/packages/node"
   },
   "license": "Apache-2.0",
   "author": "Tim Pietrusky",
   "publishConfig": {
     "access": "public"
-  },
-  "dependencies": {
-    "@aws-sdk/client-s3": "^3.856.0",
-    "@aws-sdk/lib-storage": "^3.856.0",
-    "@huggingface/hub": "^2.4.0",
-    "apache-arrow": "^21.0.0",
-    "jszip": "^3.10.1",
-    "parquet-wasm": "^0.6.1"
   }
 }
