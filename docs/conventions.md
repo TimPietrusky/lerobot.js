@@ -246,6 +246,15 @@ packages/
 - Shared constants and protocols via dedicated utils
 - Cross-platform compatibility for data formats (calibration files, etc.)
 
+**Critical API Design: Node.js `findPort()` vs `connectPort()` Separation**
+
+- **`findPort()`**: Discovery only - returns `DiscoveredPort[]` with `path` and `robotType`
+- **`connectPort(portPath, robotType, robotId)`**: Connection only - returns `RobotConnection`
+- **Beginner Flow**: `findPort()` → pick from results → `connectPort()` → use robot
+- **Advanced Flow**: Direct `connectPort()` when port is known
+- **Why Separated**: Node.js can programmatically list ports (unlike browser security model)
+- **Python Compatibility**: Matches Python lerobot's separation of discovery vs connection
+
 **CLI Architecture & Separation of Concerns:**
 
 - **Library (`@lerobot/node`)**: Pure programmatic API for Node.js applications
@@ -512,9 +521,24 @@ const response = await new Promise((resolve, reject) => {
 
 ### Development Process Requirements
 
-#### CLI Build Process
+#### Optimized Development Workflow (No Constant Rebuilding)
 
-- **Critical**: After TypeScript changes, MUST run `pnpm run build` to update CLI
+**✅ PERFECT Development Setup:**
+
+1. **Terminal 1**: `cd packages/node && pnpm dev` (watch mode)
+2. **Terminal 2**: `cd packages/cli && pnpm dev teleoperate ...` (direct TypeScript execution)
+
+**❌ WRONG**: Constantly running `pnpm build` and clearing `node_modules`
+
+**Why This Works:**
+
+- Node package rebuilds automatically on changes
+- CLI dev mode uses `vite-node` to run TypeScript directly
+- No package caching issues, immediate feedback
+
+#### CLI Build Process (Production Only)
+
+- **Critical**: After TypeScript changes, MUST run `pnpm run build` to update CLI for production
 - **Global CLI**: `lerobot` command uses compiled `dist/` files, not source
 - **Testing Flow**: Edit source → Build → Test CLI → Repeat
 - **Common Mistake**: Testing source changes without rebuilding CLI
@@ -746,18 +770,11 @@ private handleKeyboardInput(key: string): void {
 
 **Package Development Without Constant Rebuilding:**
 
-**✅ PERFECT Development Setup:**
+**✅ PERFECT Development Setup (documented above in Development Process Requirements):**
 
-1. **Terminal 1**: `cd packages/node && pnpm dev` (watch mode)
-2. **Terminal 2**: `cd packages/cli && pnpm dev teleoperate ...` (direct TypeScript execution)
-
-**❌ WRONG**: Constantly running `pnpm build` and clearing `node_modules`
-
-**Why This Works:**
-
-- Node package rebuilds automatically on changes
-- CLI dev mode uses `vite-node` to run TypeScript directly
-- No package caching issues, immediate feedback
+- Use `pnpm dev` for watch mode development
+- Use `vite-node` for direct TypeScript execution
+- Avoid constant rebuilding and `node_modules` clearing
 
 ##### 🔧 CLI Architecture Lessons
 
