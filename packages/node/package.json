@@ -1,6 +1,6 @@
 {
   "name": "@lerobot/node",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Node.js-based robotics control using SerialPort",
   "type": "module",
   "main": "./dist/index.js",
