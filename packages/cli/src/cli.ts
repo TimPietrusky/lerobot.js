@@ -155,8 +155,19 @@ async function connectToSpecificPort(
  */
 program
   .command("find-port")
-  .description(
-    "Find robot port with interactive cable detection (Python lerobot compatible)"
+  .description("Find robot port with interactive cable detection")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  $ lerobot find-port
+
+This command will:
+  1. List current ports
+  2. Ask you to unplug your robot
+  3. Detect which port disappeared
+  4. Ask you to reconnect
+`
   )
   .action(async () => {
     try {
@@ -188,6 +199,14 @@ program
   )
   .option("--robot.id <id>", "Robot ID", "default")
   .option("--output <path>", "Output calibration file path")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  $ lerobot calibrate --robot.type=so100_follower --robot.port=/dev/ttyUSB0 --robot.id=my_arm
+  $ lerobot calibrate --robot.type=so100_follower --robot.port=COM4 --robot.id=production_arm
+`
+  )
   .action(async (options) => {
     try {
       const robotType = options["robot.type"];
@@ -310,6 +329,19 @@ program
   .option("--robot.id <id>", "Robot ID", "default")
   .option("--teleop.type <type>", "Teleoperator type", "keyboard")
   .option("--duration <seconds>", "Duration in seconds (0 = unlimited)", "0")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  $ lerobot teleoperate --robot.type=so100_follower --robot.port=/dev/ttyUSB0 --robot.id=my_arm
+  $ lerobot teleop --robot.type=so100_follower --robot.port=COM4 --robot.id=my_arm --duration=60
+
+Controls:
+  w/s - Motor 1    q/e - Motor 3    t/g - Motor 5
+  a/d - Motor 2    r/f - Motor 4    y/h - Motor 6
+  Ctrl+C - Stop and exit
+`
+  )
   .action(async (options) => {
     try {
       const robotType = options["robot.type"];
@@ -391,6 +423,14 @@ program
   )
   .option("--robot.id <id>", "Robot ID", "default")
   .option("--motors <ids>", "Specific motor IDs to release (comma-separated)")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  $ lerobot release-motors --robot.type=so100_follower --robot.port=/dev/ttyUSB0 --robot.id=my_arm
+  $ lerobot release-motors --robot.type=so100_follower --robot.port=COM4 --robot.id=my_arm --motors=1,2,3
+`
+  )
   .action(async (options) => {
     try {
       const robotType = options["robot.type"];
@@ -427,8 +467,15 @@ program
  */
 program
   .name("lerobot")
-  .description("Node.js robotics control CLI - Python lerobot compatible")
-  .version("0.1.0");
+  .description(
+    "Control your robot with Node.js (inspired by LeRobot in Python)"
+  )
+  .version("0.1.0")
+  .addHelpText(
+    "after",
+    `
+    `
+  );
 
 /**
  * Parse CLI arguments and run
