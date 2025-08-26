@@ -91,7 +91,8 @@ Release robot motors for manual movement.
 ```bash
 lerobot release-motors \
   --robot.type=so100_follower \
-  --robot.port=/dev/ttyUSB0
+  --robot.port=/dev/ttyUSB0 \
+  --robot.id=my_follower_arm
 ```
 
 **Options:**
@@ -148,7 +149,8 @@ npx lerobot teleoperate \
 # 4. Release motors when done
 npx lerobot release-motors \
   --robot.type=so100_follower \
-  --robot.port=/dev/ttyUSB0
+  --robot.port=/dev/ttyUSB0 \
+  --robot.id=my_arm
 ```
 
 ### Automation Scripts
