@@ -75,18 +75,34 @@ jobs:
       - name: Install Dependencies
         run: pnpm install --no-frozen-lockfile --recursive
 
-      - name: Build Cyberpunk Demo
-        run: pnpm run build:cyberpunk
+      - name: Update cyberpunk dependency to use published version
+        run: |
+          # Get the actual version from packages/web/package.json
+          WEB_VERSION=$(node -p "require('./packages/web/package.json').version")
+          cd examples/cyberpunk-standalone
+          # Replace file dependency with published version
+          sed -i 's/"@lerobot\/web": "file:..\/..\/packages\/web"/"@lerobot\/web": "^'$WEB_VERSION'"/' package.json
+          echo "Updated cyberpunk package.json to use published version ^$WEB_VERSION"
+
+      - name: Prepare README for HF Space
+        run: |
+          # Create HF Space frontmatter by directly copying from hf_config.yml
+          cat docs/hf_config.yml > README_temp.md
+          echo "" >> README_temp.md
+          cat README.md >> README_temp.md
+          mv README_temp.md README.md
+
+      - name: Configure git
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
+      - name: Commit HF Space changes
+        run: |
+          git add README.md examples/cyberpunk-standalone/package.json
+          git commit -m "Add HF Space frontmatter and update cyberpunk dependency for deployment" || echo "No changes to commit"
 
       - name: Deploy to Hugging Face Spaces
-        uses: huggingface/huggingface_hub@main
-        with:
-          from: examples/cyberpunk-standalone/dist
-          to: .
-          space: timpietrusky/lerobot-js
-          token: ${{ secrets.HF_TOKEN }}
-
-      - name: Notify Deployment Success
-        run: |
-          echo "🚀 Successfully deployed to Hugging Face Spaces!"
-          echo "📦 Published packages: ${{ needs.release.outputs.publishedPackages }}"
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: git push https://NERDDISCO:$HF_TOKEN@huggingface.co/spaces/NERDDISCO/LeRobot.js main --force
