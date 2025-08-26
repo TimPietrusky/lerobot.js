@@ -34,7 +34,7 @@ jobs:
           cache: "pnpm"
 
       - name: Install Dependencies
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --no-frozen-lockfile --recursive
 
       - name: Build Packages
         run: pnpm run build:all
@@ -73,7 +73,7 @@ jobs:
           cache: "pnpm"
 
       - name: Install Dependencies
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --no-frozen-lockfile --recursive
 
       - name: Build Cyberpunk Demo
         run: pnpm run build:cyberpunk
