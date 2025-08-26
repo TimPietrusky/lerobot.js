@@ -1,28 +1,26 @@
-name: Release
+name: Release & Deploy
 
 on:
   push:
-    branches:
-      - main
-
-concurrency: ${{ github.workflow }}-${{ github.ref }}
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
   pull-requests: write
 
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
 jobs:
   release:
-    name: Release
+    name: Release NPM Packages
     runs-on: ubuntu-latest
+    outputs:
+      published: ${{ steps.changesets.outputs.published }}
+      publishedPackages: ${{ steps.changesets.outputs.publishedPackages }}
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: latest
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -30,21 +28,65 @@ jobs:
           node-version: 18
           cache: "pnpm"
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
       - name: Install Dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
-      - name: Build packages
-        run: pnpm --filter "@lerobot/web" run build
+      - name: Build Packages
+        run: pnpm run build:all
 
-      - name: Create Release Pull Request or Publish to npm
+      - name: Create Release Pull Request or Publish to NPM
         id: changesets
         uses: changesets/action@v1
         with:
-          # This expects you to have a script called release which does a build for your packages and calls changeset publish
-          publish: pnpm changeset:publish
           version: pnpm changeset:version
+          publish: pnpm changeset:publish
           commit: "chore: version packages"
           title: "chore: version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  deploy-to-hf:
+    name: Deploy to Hugging Face Spaces
+    runs-on: ubuntu-latest
+    needs: release
+    # Only run if packages were actually published (new release)
+    if: needs.release.outputs.published == 'true'
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: "pnpm"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Install Dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build Cyberpunk Demo
+        run: pnpm run build:cyberpunk
+
+      - name: Deploy to Hugging Face Spaces
+        uses: huggingface/huggingface_hub@main
+        with:
+          from: examples/cyberpunk-standalone/dist
+          to: .
+          space: timpietrusky/lerobot-js
+          token: ${{ secrets.HF_TOKEN }}
+
+      - name: Notify Deployment Success
+        run: |
+          echo "🚀 Successfully deployed to Hugging Face Spaces!"
+          echo "📦 Published packages: ${{ needs.release.outputs.publishedPackages }}"

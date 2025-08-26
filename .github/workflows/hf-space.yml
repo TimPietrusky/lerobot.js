@@ -1,7 +1,5 @@
 name: Sync to Hugging Face space
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 jobs:
