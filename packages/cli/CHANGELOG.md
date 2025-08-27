@@ -1,5 +1,11 @@
 # lerobot
 
+## 0.3.3
+
+### Patch Changes
+
+- 7ed97a4: use proper version; refactored README to align with other README's
+
 ## 0.3.2
 
 ### Patch Changes
