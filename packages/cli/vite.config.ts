@@ -21,6 +21,7 @@ export default defineConfig({
         "util",
         "events",
         "stream",
+        "url",
         // External dependencies
         "@lerobot/node",
         "chalk",
