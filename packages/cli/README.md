@@ -1,42 +1,68 @@
 # lerobot
 
-Control robots with Node.js (serialport) on the CLI, inspired by [LeRobot](https://github.com/huggingface/lerobot)
+Command-line interface for robot control with [@lerobot/node](https://www.npmjs.com/package/@lerobot/node) in Node.js (see [@lerobot/web](https://www.npmjs.com/package/@lerobot/web) for the browser version).
 
-## Install
+## Quick Start
 
 ```bash
-# Use directly with npx
-npx lerobot@latest find-port
-
-# Or install globally
+# Install globally
 npm install -g lerobot
+
+# Or use directly with npx
+npx lerobot@latest --help
+```
+
+### Complete Workflow
+
+```bash
+# 1. Find your robot port
 lerobot find-port
+# Output: The port of this MotorsBus is '/dev/ttyUSB0'
+
+# 2. Calibrate the robot
+lerobot calibrate --robot.type=so100_follower --robot.port=/dev/ttyUSB0 --robot.id=my_arm
+
+# 3. Control the robot
+lerobot teleoperate --robot.type=so100_follower --robot.port=/dev/ttyUSB0 --robot.id=my_arm
+
+# 4. Release motors when done
+lerobot release-motors --robot.type=so100_follower --robot.port=/dev/ttyUSB0 --robot.id=my_arm
+```
+
+### Help
+
+```bash
+# See all available commands
+lerobot --help
+
+# Get help for specific commands
+lerobot calibrate --help
+lerobot teleoperate --help
 ```
 
 ## Commands
 
-### Find Port
+### `find-port`
 
-Discover robot port with interactive cable detection. Matches Python lerobot's `find_port.py` exactly.
+Interactive port discovery using cable detection.
 
 ```bash
-npx lerobot@latest find-port
+lerobot find-port
 ```
 
-This command follows Python lerobot's behavior exactly:
+**Process:**
 
-1. Lists initial ports
+1. Lists current ports
 2. Prompts to unplug USB cable
 3. Detects which port disappeared
 4. Prompts to reconnect cable
-5. Verifies port is restored
 
-### Calibrate
+### `calibrate`
 
-Calibrate robot motors and save calibration data to Hugging Face cache.
+Calibrate robot motors and save calibration data.
 
 ```bash
-npx lerobot@latest calibrate --robot.type=so100_follower --robot.port=/dev/ttyUSB0 --robot.id=my_follower_arm
+lerobot calibrate --robot.type=so100_follower --robot.port=/dev/ttyUSB0 --robot.id=my_arm
 ```
 
 **Options:**
@@ -46,22 +72,18 @@ npx lerobot@latest calibrate --robot.type=so100_follower --robot.port=/dev/ttyUS
 - `--robot.id` - Robot identifier (default: `default`)
 - `--output` - Custom output path for calibration file
 
-**Compatible with:** `python -m lerobot.calibrate`
-
-Calibration files are saved to the same location as Python lerobot:
+**Storage Location:**
 
 ```
 ~/.cache/huggingface/lerobot/calibration/robots/{robot_type}/{robot_id}.json
 ```
 
-This ensures calibration data is shared between Python and Node.js implementations.
+### `teleoperate`
 
-### Teleoperate
-
-Control robot through keyboard teleoperation.
+Control robot through keyboard input.
 
 ```bash
-npx lerobot@latest teleoperate --robot.type=so100_follower --robot.port=/dev/ttyUSB0 --robot.id=my_follower_arm
+lerobot teleoperate --robot.type=so100_follower --robot.port=/dev/ttyUSB0 --robot.id=my_arm
 ```
 
 **Options:**
@@ -70,27 +92,23 @@ npx lerobot@latest teleoperate --robot.type=so100_follower --robot.port=/dev/tty
 - `--robot.port` - Serial port (e.g., `/dev/ttyUSB0`, `COM4`)
 - `--robot.id` - Robot identifier (default: `default`)
 - `--teleop.type` - Teleoperator type (default: `keyboard`)
-- `--teleop.stepSize` - Step size for keyboard control (default: `25`)
 - `--duration` - Duration in seconds, 0 = unlimited (default: `0`)
 
-**Controls:**
+**Keyboard Controls:**
 
-- `w/s` - Motor 1 up/down
-- `a/d` - Motor 2 left/right
-- `q/e` - Motor 3 up/down
-- `r/f` - Motor 4 forward/back
-- `t/g` - Motor 5 up/down
-- `y/h` - Motor 6 open/close
+- `w/s` - Elbow flex/extend
+- `a/d` - Wrist down/up
+- `q/e` - Wrist roll left/right
+- `o/c` - Gripper open/close
+- `Arrow keys` - Shoulder lift/pan
 - `Ctrl+C` - Stop and exit
 
-**Compatible with:** `python -m lerobot.teleoperate`
+### `release-motors`
 
-### Release Motors
-
-Release robot motors for manual movement.
+Release robot motors for manual positioning.
 
 ```bash
-npx lerobot@latest release-motors --robot.type=so100_follower --robot.port=/dev/ttyUSB0 --robot.id=my_follower_arm
+lerobot release-motors --robot.type=so100_follower --robot.port=/dev/ttyUSB0 --robot.id=my_arm
 ```
 
 **Options:**
@@ -99,29 +117,3 @@ npx lerobot@latest release-motors --robot.type=so100_follower --robot.port=/dev/
 - `--robot.port` - Serial port (e.g., `/dev/ttyUSB0`, `COM4`)
 - `--robot.id` - Robot identifier (default: `default`)
 - `--motors` - Specific motor IDs to release (comma-separated)
-
-**Note:** This command is specific to our Node.js implementation for convenient motor management.
-
-## Examples
-
-### Complete Workflow
-
-```bash
-# 1. Find your robot
-npx lerobot@latest find-port
-# Output: Detected port: /dev/ttyUSB0
-
-# 2. Calibrate the robot
-npx lerobot@latest calibrate --robot.type=so100_follower --robot.port=/dev/ttyUSB0 --robot.id=my_arm
-
-# 3. Control the robot
-npx lerobot@latest teleoperate --robot.type=so100_follower --robot.port=/dev/ttyUSB0 --robot.id=my_arm --teleop.type=keyboard
-
-# 4. Release motors when done
-npx lerobot@latest release-motors --robot.type=so100_follower --robot.port=/dev/ttyUSB0 --robot.id=my_arm
-```
-
-## Related Packages
-
-- **[@lerobot/node](../node/)** - Node.js library based on serialport
-- **[@lerobot/web](../web/)** - Browser library for web applications based on WebSerial and WebUSB
