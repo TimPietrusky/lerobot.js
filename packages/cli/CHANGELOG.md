@@ -1,5 +1,11 @@
 # lerobot
 
+## 0.3.1
+
+### Patch Changes
+
+- 7496471: docs: use "npx lerobot@latest"
+
 ## 0.3.0
 
 ### Minor Changes
