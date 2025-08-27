@@ -204,7 +204,7 @@ program
     `
 Examples:
   $ lerobot calibrate --robot.type=so100_follower --robot.port=/dev/ttyUSB0 --robot.id=my_arm
-  $ lerobot calibrate --robot.type=so100_follower --robot.port=COM4 --robot.id=production_arm
+  $ lerobot calibrate --robot.type=so100_follower --robot.port=COM4 --robot.id=my_arm
 `
   )
   .action(async (options) => {
@@ -319,7 +319,6 @@ Examples:
  */
 program
   .command("teleoperate")
-  .alias("teleop")
   .description("Control robot through teleoperation")
   .requiredOption("--robot.type <type>", "Robot type (e.g., so100_follower)")
   .requiredOption(
@@ -334,12 +333,7 @@ program
     `
 Examples:
   $ lerobot teleoperate --robot.type=so100_follower --robot.port=/dev/ttyUSB0 --robot.id=my_arm
-  $ lerobot teleop --robot.type=so100_follower --robot.port=COM4 --robot.id=my_arm --duration=60
-
-Controls:
-  w/s - Motor 1    q/e - Motor 3    t/g - Motor 5
-  a/d - Motor 2    r/f - Motor 4    y/h - Motor 6
-  Ctrl+C - Stop and exit
+  $ lerobot teleoperate --robot.type=so100_follower --robot.port=COM4 --robot.id=my_arm
 `
   )
   .action(async (options) => {
