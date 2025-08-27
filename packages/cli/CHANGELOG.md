@@ -1,5 +1,11 @@
 # lerobot
 
+## 0.3.2
+
+### Patch Changes
+
+- e3cb368: refactor: removed "teleop" alias; use same example robot.id
+
 ## 0.3.1
 
 ### Patch Changes

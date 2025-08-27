@@ -1,6 +1,6 @@
 {
   "name": "lerobot",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "CLI for lerobot.js",
   "type": "module",
   "main": "./dist/index.js",
