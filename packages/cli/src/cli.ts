@@ -20,6 +20,17 @@ import { createInterface } from "readline";
 import { platform } from "os";
 import { readdir } from "fs/promises";
 import { join } from "path";
+import { readFileSync } from "fs";
+import { fileURLToPath } from "url";
+import { dirname } from "path";
+
+// Get package version dynamically
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const packageJson = JSON.parse(
+  readFileSync(join(__dirname, "../package.json"), "utf8")
+);
+const version = packageJson.version;
 
 /**
  * CLI-specific function to list available serial ports
@@ -464,7 +475,7 @@ program
   .description(
     "Control your robot with Node.js (inspired by LeRobot in Python)"
   )
-  .version("0.1.0")
+  .version(version)
   .addHelpText(
     "after",
     `
