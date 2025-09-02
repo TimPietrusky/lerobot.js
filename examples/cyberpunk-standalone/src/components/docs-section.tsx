@@ -934,34 +934,6 @@ sudo chmod 666 /dev/tty.usbserial-*`}
                 </div>
               </div>
             </div>
-
-            {/* Python Migration */}
-            <div>
-              <h3 className="text-xl font-bold text-cyan-600 dark:text-accent-cyan tracking-wider uppercase">
-                Migration from Python lerobot
-              </h3>
-              <p className="text-sm mt-2 mb-4">
-                Commands are nearly identical - seamless migration from Python
-                lerobot.
-              </p>
-              <CodeBlock language="bash">
-                {`# Python lerobot
-python -m lerobot.calibrate --robot.type so100_follower --robot.port /dev/ttyUSB0
-
-# Node.js equivalent
-npx lerobot calibrate --robot.type so100_follower --robot.port /dev/ttyUSB0`}
-              </CodeBlock>
-              <div className="mt-4 space-y-2 text-sm">
-                <div>
-                  • <strong>Same commands</strong> - just replace{" "}
-                  <code>python -m lerobot.</code> with <code>npx lerobot</code>
-                </div>
-                <div>
-                  • <strong>Same calibration files</strong> - Python and Node.js
-                  calibrations are interchangeable
-                </div>
-              </div>
-            </div>
           </TabsContent>
 
           <TabsContent value="cli" className="space-y-14">
