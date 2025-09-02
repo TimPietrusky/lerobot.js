@@ -889,7 +889,7 @@ const process = await teleoperate(robot, { calibrationData });
 **Proper utils organization prevents reimplementation:**
 
 ```
-src/lerobot/web/utils/
+packages/web/src/utils/
 ├── sts3215-protocol.ts     # Protocol constants
 ├── sign-magnitude.ts       # Encoding/decoding
 ├── serial-port-wrapper.ts  # Web Serial wrapper
@@ -914,7 +914,7 @@ src/lerobot/web/utils/
 **Types belong in dedicated directories, not mixed with business logic:**
 
 ```
-src/lerobot/web/types/
+packages/web/src/types/
 ├── robot-connection.ts     # Core connection types
 └── robot-config.ts        # Hardware configuration types
 ```
