@@ -7,9 +7,7 @@ import {
   Terminal,
   Copy,
   Check,
-  Monitor,
   Server,
-  Command,
   Package,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -222,53 +220,55 @@ export function DocsSection() {
         </p>
       </div>
 
-      <div className="bg-muted/40 dark:bg-black/30 border border-border dark:border-white/10 p-6 md:p-8 rounded-lg">
+      <div className="bg-muted/40 dark:bg-black/30 border border-border dark:border-white/10 p-4 md:p-6 lg:p-8 rounded-lg">
         <Tabs defaultValue="web" className="w-full">
           <TabsList className="grid w-full grid-cols-3 mb-8 h-auto p-2">
             <TabsTrigger
               value="web"
-              className="flex items-center gap-3 h-16 px-4 data-[state=active]:bg-background"
+              className="flex flex-col sm:flex-row items-center gap-2 sm:gap-3 h-20 sm:h-16 px-2 sm:px-4 data-[state=active]:bg-background"
             >
-              <div className="w-8 h-8 bg-primary/20 rounded-lg flex items-center justify-center">
-                <Package className="w-5 h-5 text-primary" />
+              <div className="w-6 h-6 sm:w-8 sm:h-8 bg-primary/20 rounded-lg flex items-center justify-center">
+                <Package className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
               </div>
-              <div className="text-left">
-                <div className="font-bold text-sm uppercase tracking-wider">
+              <div className="text-center sm:text-left">
+                <div className="font-bold text-xs sm:text-sm uppercase tracking-wider">
                   WEB
                 </div>
-                <div className="text-xs text-muted-foreground">
+                <div className="text-xs text-muted-foreground hidden sm:block">
                   @lerobot/web
                 </div>
               </div>
             </TabsTrigger>
             <TabsTrigger
               value="node"
-              className="flex items-center gap-3 h-16 px-4 data-[state=active]:bg-background"
+              className="flex flex-col sm:flex-row items-center gap-2 sm:gap-3 h-20 sm:h-16 px-2 sm:px-4 data-[state=active]:bg-background"
             >
-              <div className="w-8 h-8 bg-primary/20 rounded-lg flex items-center justify-center">
-                <Server className="w-5 h-5 text-primary" />
+              <div className="w-6 h-6 sm:w-8 sm:h-8 bg-primary/20 rounded-lg flex items-center justify-center">
+                <Server className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
               </div>
-              <div className="text-left">
-                <div className="font-bold text-sm uppercase tracking-wider">
+              <div className="text-center sm:text-left">
+                <div className="font-bold text-xs sm:text-sm uppercase tracking-wider">
                   NODE
                 </div>
-                <div className="text-xs text-muted-foreground">
+                <div className="text-xs text-muted-foreground hidden sm:block">
                   @lerobot/node
                 </div>
               </div>
             </TabsTrigger>
             <TabsTrigger
               value="cli"
-              className="flex items-center gap-3 h-16 px-4 data-[state=active]:bg-background"
+              className="flex flex-col sm:flex-row items-center gap-2 sm:gap-3 h-20 sm:h-16 px-2 sm:px-4 data-[state=active]:bg-background"
             >
-              <div className="w-8 h-8 bg-primary/20 rounded-lg flex items-center justify-center">
-                <Terminal className="w-5 h-5 text-primary" />
+              <div className="w-6 h-6 sm:w-8 sm:h-8 bg-primary/20 rounded-lg flex items-center justify-center">
+                <Terminal className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
               </div>
-              <div className="text-left">
-                <div className="font-bold text-sm uppercase tracking-wider">
+              <div className="text-center sm:text-left">
+                <div className="font-bold text-xs sm:text-sm uppercase tracking-wider">
                   CLI
                 </div>
-                <div className="text-xs text-muted-foreground">lerobot</div>
+                <div className="text-xs text-muted-foreground hidden sm:block">
+                  lerobot
+                </div>
               </div>
             </TabsTrigger>
           </TabsList>
@@ -806,8 +806,7 @@ console.log(\`Connected to \${robot.robotType} on \${robot.port.path}\`);`}
                 <div>
                   <h4 className="font-bold text-primary">calibrate(config)</h4>
                   <p className="text-sm mt-1">
-                    Calibrates motor homing offsets and records range of motion.{" "}
-                    <strong>Identical to Python lerobot behavior.</strong>
+                    Calibrates motor homing offsets and records range of motion.
                   </p>
                   <CodeBlock>
                     {`const calibrationProcess = await calibrate({
@@ -952,14 +951,19 @@ sudo chmod 666 /dev/tty.usbserial-*`}
                       Interactive port discovery using cable detection.
                     </p>
                     <CLICodeBlock language="bash">
-                      {`lerobot find-port
-
-# Interactive process:
-# 1. Lists current ports
-# 2. Prompts to unplug USB cable  
-# 3. Detects which port disappeared
-# 4. Prompts to reconnect cable`}
+                      {`lerobot find-port`}
                     </CLICodeBlock>
+                    <div className="mt-3">
+                      <h5 className="font-bold text-sm tracking-wider">
+                        Interactive Process
+                      </h5>
+                      <ul className="mt-1 ml-4 space-y-1 text-sm">
+                        <li>• Lists current ports</li>
+                        <li>• Prompts to unplug USB cable</li>
+                        <li>• Detects which port disappeared</li>
+                        <li>• Prompts to reconnect cable</li>
+                      </ul>
+                    </div>
                   </div>
 
                   {/* calibrate */}
@@ -969,14 +973,39 @@ sudo chmod 666 /dev/tty.usbserial-*`}
                       Calibrate robot motors and save calibration data.
                     </p>
                     <CLICodeBlock language="bash">
-                      {`lerobot calibrate --robot.type=so100_follower --robot.port=/dev/ttyUSB0 --robot.id=my_arm
-
-# Options:
-# --robot.type    Robot type (so100_follower, so100_leader)
-# --robot.port    Serial port (/dev/ttyUSB0, COM4)
-# --robot.id      Robot identifier (default: "default")
-# --output        Custom output path for calibration file`}
+                      {`lerobot calibrate --robot.type=so100_follower --robot.port=/dev/ttyUSB0 --robot.id=my_arm`}
                     </CLICodeBlock>
+                    <div className="mt-3">
+                      <h5 className="font-bold text-sm tracking-wider">
+                        Options
+                      </h5>
+                      <ul className="mt-1 ml-4 space-y-1 text-sm">
+                        <li>
+                          • <code>--robot.type</code> - Robot type
+                          (so100_follower, so100_leader)
+                        </li>
+                        <li>
+                          • <code>--robot.port</code> - Serial port
+                          (/dev/ttyUSB0, COM4)
+                        </li>
+                        <li>
+                          • <code>--robot.id</code> - Robot identifier (default:
+                          "default")
+                        </li>
+                        <li>
+                          • <code>--output</code> - Custom output path for
+                          calibration file
+                        </li>
+                      </ul>
+                    </div>
+                    <div className="mt-3">
+                      <h5 className="font-bold text-sm tracking-wider">
+                        Storage Location
+                      </h5>
+                      <div className="mt-1 ml-4 text-sm font-mono">
+                        ~/.cache/huggingface/lerobot/calibration/robots/&#123;robot_type&#125;/&#123;robot_id&#125;.json
+                      </div>
+                    </div>
                   </div>
 
                   {/* teleoperate */}
@@ -986,16 +1015,94 @@ sudo chmod 666 /dev/tty.usbserial-*`}
                       Control robot through keyboard input.
                     </p>
                     <CLICodeBlock language="bash">
-                      {`lerobot teleoperate --robot.type=so100_follower --robot.port=/dev/ttyUSB0 --robot.id=my_arm
-
-# Keyboard Controls:
-# w/s          - Elbow flex/extend
-# a/d          - Wrist down/up  
-# q/e          - Wrist roll left/right
-# o/c          - Gripper open/close
-# Arrow keys   - Shoulder lift/pan
-# Ctrl+C       - Stop and exit`}
+                      {`lerobot teleoperate --robot.type=so100_follower --robot.port=/dev/ttyUSB0 --robot.id=my_arm`}
                     </CLICodeBlock>
+                    <div className="mt-3">
+                      <h5 className="font-bold text-sm tracking-wider">
+                        Options
+                      </h5>
+                      <ul className="mt-1 ml-4 space-y-1 text-sm">
+                        <li>
+                          • <code>--robot.type</code> - Robot type (e.g.,
+                          so100_follower)
+                        </li>
+                        <li>
+                          • <code>--robot.port</code> - Serial port (e.g.,
+                          /dev/ttyUSB0, COM4)
+                        </li>
+                        <li>
+                          • <code>--robot.id</code> - Robot identifier (default:
+                          "default")
+                        </li>
+                        <li>
+                          • <code>--teleop.type</code> - Teleoperator type
+                          (default: "keyboard")
+                        </li>
+                        <li>
+                          • <code>--duration</code> - Duration in seconds, 0 =
+                          unlimited (default: "0")
+                        </li>
+                      </ul>
+                    </div>
+                    <div className="mt-3">
+                      <h5 className="font-bold text-sm tracking-wider">
+                        Keyboard Controls
+                      </h5>
+                      <ul className="mt-1 ml-4 space-y-1 text-sm">
+                        <li>
+                          • <code>w/s</code> - Elbow flex/extend
+                        </li>
+                        <li>
+                          • <code>a/d</code> - Wrist down/up
+                        </li>
+                        <li>
+                          • <code>q/e</code> - Wrist roll left/right
+                        </li>
+                        <li>
+                          • <code>o/c</code> - Gripper open/close
+                        </li>
+                        <li>
+                          • <code>Arrow keys</code> - Shoulder lift/pan
+                        </li>
+                        <li>
+                          • <code>Ctrl+C</code> - Stop and exit
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  {/* release-motors */}
+                  <div>
+                    <h4 className="font-bold text-primary">release-motors</h4>
+                    <p className="text-sm mt-1">
+                      Release robot motors for manual positioning.
+                    </p>
+                    <CLICodeBlock language="bash">
+                      {`lerobot release-motors --robot.type=so100_follower --robot.port=/dev/ttyUSB0 --robot.id=my_arm`}
+                    </CLICodeBlock>
+                    <div className="mt-3">
+                      <h5 className="font-bold text-sm tracking-wider">
+                        Options
+                      </h5>
+                      <ul className="mt-1 ml-4 space-y-1 text-sm">
+                        <li>
+                          • <code>--robot.type</code> - Robot type (e.g.,
+                          so100_follower)
+                        </li>
+                        <li>
+                          • <code>--robot.port</code> - Serial port (e.g.,
+                          /dev/ttyUSB0, COM4)
+                        </li>
+                        <li>
+                          • <code>--robot.id</code> - Robot identifier (default:
+                          "default")
+                        </li>
+                        <li>
+                          • <code>--motors</code> - Specific motor IDs to
+                          release (comma-separated)
+                        </li>
+                      </ul>
+                    </div>
                   </div>
                 </div>
               </div>

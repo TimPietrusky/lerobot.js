@@ -125,29 +125,27 @@ export function RoadmapSection() {
       <div className="bg-gradient-to-br from-muted/60 to-muted/40 dark:from-black/40 dark:to-black/20 border border-primary/20 rounded-lg overflow-hidden">
         {/* Header */}
         <div className="bg-primary/30 dark:bg-primary/10 border-b border-primary/20 p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-green-500 dark:bg-green-400 rounded-full"></div>
-                  <span className="text-green-600 dark:text-green-400 text-xs">
-                    {completedCount} COMPLETED
-                  </span>
-                </div>
-                <div className="w-px h-4 bg-border dark:bg-white/10"></div>
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-orange-500 dark:bg-orange-400 rounded-full animate-pulse"></div>
-                  <span className="text-orange-600 dark:text-orange-400 text-xs">
-                    {inProgressCount} IN PROGRESS
-                  </span>
-                </div>
-                <div className="w-px h-4 bg-border dark:bg-white/10"></div>
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-slate-500 dark:bg-muted-foreground rounded-full"></div>
-                  <span className="text-slate-600 dark:text-muted-foreground text-xs">
-                    {totalCount - completedCount - inProgressCount} PLANNED
-                  </span>
-                </div>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-green-500 dark:bg-green-400 rounded-full"></div>
+                <span className="text-green-600 dark:text-green-400 text-xs">
+                  {completedCount} COMPLETED
+                </span>
+              </div>
+              <div className="w-px h-4 bg-border dark:bg-white/10 hidden sm:block"></div>
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-orange-500 dark:bg-orange-400 rounded-full animate-pulse"></div>
+                <span className="text-orange-600 dark:text-orange-400 text-xs">
+                  {inProgressCount} IN PROGRESS
+                </span>
+              </div>
+              <div className="w-px h-4 bg-border dark:bg-white/10 hidden sm:block"></div>
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-slate-500 dark:bg-muted-foreground rounded-full"></div>
+                <span className="text-slate-600 dark:text-muted-foreground text-xs">
+                  {totalCount - completedCount - inProgressCount} PLANNED
+                </span>
               </div>
             </div>
             <div className="text-xs text-muted-foreground">
@@ -202,7 +200,7 @@ export function RoadmapSection() {
                   <Badge
                     variant="outline"
                     className={cn(
-                      "text-xs font-bold tracking-wider border-0 px-3 py-1 flex-shrink-0",
+                      "text-xs font-bold tracking-wider border-0 px-3 py-1 flex-shrink-0 hidden sm:block",
                       config.textColor,
                       config.bgColor
                     )}
