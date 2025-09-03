@@ -177,7 +177,7 @@ console.log(`Connected to ${robot.robotType} on ${robot.port.path}`);
 
 ### `calibrate(config): Promise<CalibrationProcess>`
 
-Calibrates motor homing offsets and records range of motion. **Identical to Python lerobot behavior.**
+Calibrates motor homing offsets and records range of motion.
 
 ```typescript
 const calibrationProcess = await calibrate({
