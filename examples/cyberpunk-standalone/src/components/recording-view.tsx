@@ -12,6 +12,7 @@ import {
   Settings,
   Square,
   Disc as Record,
+  Check,
 } from "lucide-react";
 import {
   Select,
@@ -53,6 +54,14 @@ export function RecordingView({ robot }: RecordingViewProps) {
     stopRecording: () => Promise<void>;
     isRecording: boolean;
   } | null>(null);
+
+  // Current step tracking
+  const currentStep = useMemo(() => {
+    if (!robot.isConnected) return 0; // No steps active if robot offline
+    if (!controlEnabled) return 1; // Step 1: Enable Control
+    if (!recorderCallbacks?.isRecording) return 2; // Step 2: Start Recording
+    return 3; // Step 3: Move Robot (recording active)
+  }, [robot.isConnected, controlEnabled, recorderCallbacks?.isRecording]);
   const keyboardProcessRef = useRef<TeleoperationProcess | null>(null);
   const directProcessRef = useRef<TeleoperationProcess | null>(null);
   const { toast } = useToast();
@@ -356,8 +365,17 @@ export function RecordingView({ robot }: RecordingViewProps) {
             <div className="space-y-4">
               {/* Step 1 */}
               <div className="flex items-start gap-4">
-                <div className="flex-shrink-0 w-8 h-8 bg-primary/20 border border-primary/50 rounded-full flex items-center justify-center text-sm font-mono">
-                  1
+                <div
+                  className={cn(
+                    "flex-shrink-0 w-8 h-8 border rounded-full flex items-center justify-center text-sm font-mono",
+                    currentStep > 1
+                      ? "bg-green-500/20 border-green-500/50 text-green-400" // Completed
+                      : currentStep === 1
+                      ? "bg-yellow-500/20 border-yellow-500/50 text-yellow-400" // Active
+                      : "bg-muted/20 border-muted/50 text-muted-foreground" // Inactive
+                  )}
+                >
+                  {currentStep > 1 ? <Check className="w-4 h-4" /> : "1"}
                 </div>
                 <div className="flex-1">
                   <h5 className="font-semibold text-foreground">
@@ -432,12 +450,14 @@ export function RecordingView({ robot }: RecordingViewProps) {
                 <div
                   className={cn(
                     "flex-shrink-0 w-8 h-8 border rounded-full flex items-center justify-center text-sm font-mono",
-                    controlEnabled
-                      ? "bg-primary/20 border-primary/50"
-                      : "bg-muted/20 border-muted/50 text-muted-foreground"
+                    currentStep > 2
+                      ? "bg-green-500/20 border-green-500/50 text-green-400" // Completed
+                      : currentStep === 2
+                      ? "bg-yellow-500/20 border-yellow-500/50 text-yellow-400" // Active
+                      : "bg-muted/20 border-muted/50 text-muted-foreground" // Inactive
                   )}
                 >
-                  2
+                  {currentStep > 2 ? <Check className="w-4 h-4" /> : "2"}
                 </div>
                 <div>
                   <h5
@@ -466,16 +486,36 @@ export function RecordingView({ robot }: RecordingViewProps) {
 
               {/* Step 3 */}
               <div className="flex items-start gap-4">
-                <div className="flex-shrink-0 w-8 h-8 bg-muted/20 border border-muted/50 rounded-full flex items-center justify-center text-sm font-mono text-muted-foreground">
+                <div
+                  className={cn(
+                    "flex-shrink-0 w-8 h-8 border rounded-full flex items-center justify-center text-sm font-mono",
+                    currentStep === 3
+                      ? "bg-yellow-500/20 border-yellow-500/50 text-yellow-400 animate-pulse" // Active with pulse
+                      : "bg-muted/20 border-muted/50 text-muted-foreground" // Inactive
+                  )}
+                >
                   3
                 </div>
                 <div>
-                  <h5 className="font-semibold text-muted-foreground">
+                  <h5
+                    className={cn(
+                      "font-semibold",
+                      currentStep === 3
+                        ? "text-foreground"
+                        : "text-muted-foreground"
+                    )}
+                  >
                     Move the Robot
                   </h5>
                   <p className="text-sm text-muted-foreground">
-                    Move the robot manually to demonstrate the task you want to
-                    teach. Recording will capture your movements.
+                    {currentStep === 3 ? (
+                      <span className="text-yellow-400">
+                        🎯 Recording active! Move the robot to demonstrate your
+                        task.
+                      </span>
+                    ) : (
+                      "Move the robot manually to demonstrate the task you want to teach. Recording will capture your movements."
+                    )}
                   </p>
                 </div>
               </div>

@@ -26,6 +26,16 @@ import {
   Edit2,
   Check,
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { LeRobotDatasetRecorder, LeRobotEpisode } from "@lerobot/web";
 import { TeleoperatorEpisodesView } from "./teleoperator-episodes-view";
 
@@ -87,6 +97,9 @@ export function Recorder({
 }: RecorderProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [currentEpisode, setCurrentEpisode] = useState(0);
+  const [persistedEpisodes, setPersistedEpisodes] = useState<any[]>([]);
+  const [showDeleteEpisodesDialog, setShowDeleteEpisodesDialog] =
+    useState(false);
   // Use huggingfaceApiKey from recorderSettings instead of separate state
   const [cameraName, setCameraName] = useState("");
   const [additionalCameras, setAdditionalCameras] = useState<{
@@ -124,24 +137,39 @@ export function Recorder({
         30, // fps
         "Robot teleoperation recording"
       );
+
+      // Restore persisted episodes to the new recorder
+      if (persistedEpisodes.length > 0) {
+        (recorderRef.current as any).teleoperatorData = [...persistedEpisodes];
+        setCurrentEpisode(persistedEpisodes.length - 1);
+      }
     } else {
+      // Persist episodes before clearing recorder
+      if (recorderRef.current?.teleoperatorData) {
+        setPersistedEpisodes((prev) => {
+          // Only update if we have new data
+          const currentData = recorderRef.current?.teleoperatorData || [];
+          return currentData.length > 0 ? [...currentData] : prev;
+        });
+      }
       // Clear recorder when no teleoperators available
       recorderRef.current = null;
     }
-  }, [teleoperators, additionalCameras]);
+  }, [teleoperators, additionalCameras, persistedEpisodes]);
 
   // Notify parent of recorder state changes
   useEffect(() => {
     if (onRecorderReady) {
       onRecorderReady({
-        startRecording: handleStartRecording,
+        startRecording: handleStartRecordingClick,
         stopRecording: handleStopRecording,
         isRecording: isRecording,
       });
     }
   }, [isRecording, onRecorderReady]);
 
-  const handleStartRecording = async () => {
+  // Simple recording start - just like the original working version
+  const handleStartRecordingClick = async () => {
     if (!recorderRef.current) {
       toast({
         title: "Recording Error",
@@ -185,6 +213,9 @@ export function Recorder({
       const result = await recorderRef.current.stopRecording();
       setIsRecording(false);
 
+      // Persist episodes when stopping recording
+      setPersistedEpisodes([...recorderRef.current.teleoperatorData]);
+
       toast({
         title: "Recording Stopped",
         description: `Episode ${currentEpisode} completed with ${result.teleoperatorData.length} frames`,
@@ -198,6 +229,39 @@ export function Recorder({
         variant: "destructive",
       });
     }
+  };
+
+  const handleDeleteEpisodes = async () => {
+    if (recorderRef.current) {
+      recorderRef.current.clearRecording();
+
+      // If currently recording, create a new episode so recording can continue
+      if (isRecording) {
+        (recorderRef.current as any).teleoperatorData.push(
+          new LeRobotEpisode()
+        );
+        console.log(
+          "Created new episode after delete, teleoperatorData:",
+          recorderRef.current.teleoperatorData
+        );
+      }
+    }
+
+    // Clear persisted episodes only if not recording
+    if (!isRecording) {
+      setPersistedEpisodes([]);
+    }
+
+    setCurrentEpisode(0);
+    setHasRecordedFrames(isRecording); // Keep true if recording, false if not
+    setShowDeleteEpisodesDialog(false);
+
+    toast({
+      title: "Episodes Deleted",
+      description: isRecording
+        ? "All recorded episodes have been cleared. Recording continues with new episode 0."
+        : "All recorded episodes have been cleared.",
+    });
   };
 
   const handleNextEpisode = () => {
@@ -216,6 +280,15 @@ export function Recorder({
     // Create a new episode in the teleoperatorData array
     // This is needed because currentEpisode always points to the last episode
     (recorderRef.current as any).teleoperatorData.push(new LeRobotEpisode());
+
+    console.log(
+      "After next episode - teleoperatorData:",
+      recorderRef.current.teleoperatorData
+    );
+    console.log(
+      "After next episode - teleoperatorData.length:",
+      recorderRef.current.teleoperatorData.length
+    );
 
     toast({
       title: "Next Episode Started",
@@ -999,6 +1072,18 @@ export function Recorder({
             <PlusCircle className="w-4 h-4" />
             Next Episode
           </Button>
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={() => setShowDeleteEpisodesDialog(true)}
+            disabled={
+              persistedEpisodes.length === 0 &&
+              (recorderRef.current?.teleoperatorData.length || 0) === 0
+            }
+          >
+            <Trash2 className="w-4 h-4" />
+            Delete Episodes
+          </Button>
         </div>
 
         <div className="flex items-center gap-2">
@@ -1031,9 +1116,36 @@ export function Recorder({
 
       <div className="border border-white/10 rounded-md overflow-hidden">
         <TeleoperatorEpisodesView
-          teleoperatorData={recorderRef.current?.teleoperatorData}
+          teleoperatorData={
+            recorderRef.current?.teleoperatorData || persistedEpisodes
+          }
         />
       </div>
+
+      {/* Delete Episodes Confirmation Dialog */}
+      <AlertDialog
+        open={showDeleteEpisodesDialog}
+        onOpenChange={setShowDeleteEpisodesDialog}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete All Episodes</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete all recorded episodes? This action
+              cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteEpisodes}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete Episodes
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
