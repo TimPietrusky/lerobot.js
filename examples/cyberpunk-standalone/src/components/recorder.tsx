@@ -123,6 +123,9 @@ export function Recorder({
     null
   );
   const [editingCameraNewName, setEditingCameraNewName] = useState("");
+  const [sourceSelectorOpenFor, setSourceSelectorOpenFor] = useState<
+    string | null
+  >(null);
 
   const recorderRef = useRef<LeRobotDatasetRecorder | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -442,6 +445,79 @@ export function Recorder({
       }
     },
     [previewStream, toast]
+  );
+
+  // Change camera source for an already-added camera card
+  const handleChangeCameraSourceForCard = useCallback(
+    async (cameraName: string, deviceId: string) => {
+      if (hasRecordedFrames) {
+        toast({
+          title: "Camera Error",
+          description:
+            "Cannot change camera source after recording has started",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      try {
+        // Create new stream for selected device
+        const newStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            deviceId: { exact: deviceId },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+        });
+
+        // Replace existing stream in additionalCameras
+        setAdditionalCameras((prev) => {
+          const next = { ...prev };
+          const old = next[cameraName];
+          if (old) {
+            old.getTracks().forEach((t) => t.stop());
+          }
+          next[cameraName] = newStream;
+          return next;
+        });
+
+        // Update persistent config
+        const selected = availableCameras.find((c) => c.deviceId === deviceId);
+        const newSettings = {
+          ...recorderSettings,
+          cameraConfigs: { ...recorderSettings.cameraConfigs },
+        };
+        if (!newSettings.cameraConfigs[cameraName]) {
+          newSettings.cameraConfigs[cameraName] = {
+            deviceId,
+            deviceLabel: selected?.label || `Camera ${deviceId.slice(0, 8)}...`,
+          };
+        } else {
+          newSettings.cameraConfigs[cameraName].deviceId = deviceId;
+          newSettings.cameraConfigs[cameraName].deviceLabel =
+            selected?.label || `Camera ${deviceId.slice(0, 8)}...`;
+        }
+        setRecorderSettings(newSettings);
+        saveRecorderSettings(newSettings);
+
+        setSourceSelectorOpenFor(null);
+        toast({
+          title: "Camera Source Updated",
+          description: `\"${cameraName}\" now uses \"${
+            selected?.label || deviceId
+          }\"`,
+        });
+      } catch (error) {
+        toast({
+          title: "Camera Error",
+          description: `Failed to switch camera: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+          variant: "destructive",
+        });
+      }
+    },
+    [hasRecordedFrames, availableCameras, recorderSettings, toast]
   );
 
   // Add a new camera to the recorder
@@ -1036,14 +1112,66 @@ export function Recorder({
                       <Edit2 className="w-3 h-3 opacity-50" />
                     </button>
                   )}
-                  <button
-                    onClick={() => handleRemoveCamera(cameraName)}
-                    className="text-red-400 hover:text-red-300 p-1 ml-2"
-                    disabled={hasRecordedFrames}
-                    title="Remove camera"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-2 ml-2">
+                    {/* Inline camera source selector trigger */}
+                    <div className="relative">
+                      <button
+                        onClick={() =>
+                          setSourceSelectorOpenFor((prev) =>
+                            prev === cameraName ? null : cameraName
+                          )
+                        }
+                        className="text-white/80 hover:text-white p-1"
+                        disabled={hasRecordedFrames}
+                        title="Change camera source"
+                      >
+                        <Camera className="w-4 h-4" />
+                      </button>
+                      {sourceSelectorOpenFor === cameraName && (
+                        <div className="absolute right-0 mt-1 z-20 bg-black/90 border border-white/20 rounded p-2 w-64">
+                          <label className="text-xs text-white/70">
+                            Camera Source
+                          </label>
+                          <Select
+                            value={
+                              recorderSettings.cameraConfigs[cameraName]
+                                ?.deviceId || ""
+                            }
+                            onValueChange={(deviceId) =>
+                              handleChangeCameraSourceForCard(
+                                cameraName,
+                                deviceId
+                              )
+                            }
+                            disabled={hasRecordedFrames}
+                          >
+                            <SelectTrigger className="w-full h-8 bg-black/20 border-white/10">
+                              <SelectValue placeholder="Choose a camera" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableCameras.map((cam) => (
+                                <SelectItem
+                                  key={cam.deviceId}
+                                  value={cam.deviceId}
+                                >
+                                  {cam.label ||
+                                    `Camera ${cam.deviceId.slice(0, 8)}...`}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => handleRemoveCamera(cameraName)}
+                      className="text-red-400 hover:text-red-300 p-1"
+                      disabled={hasRecordedFrames}
+                      title="Remove camera"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}

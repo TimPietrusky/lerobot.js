@@ -195,12 +195,48 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
     };
   }, []);
 
-  // Keyboard event handlers
+  // Keyboard event handlers (guarded to not interfere with inputs/shortcuts)
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
       if (!teleopState.isActive || !keyboardProcessRef.current) return;
 
-      const key = event.key;
+      // Ignore when user is typing in inputs/textareas or contenteditable elements
+      const target = event.target as HTMLElement | null;
+      const isEditableTarget = !!(
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable ||
+          target.closest(
+            '[role="textbox"], [contenteditable="true"], input, textarea, select'
+          ))
+      );
+      if (isEditableTarget) return;
+
+      // Allow browser/system shortcuts (e.g. Ctrl/Cmd+R, Ctrl/Cmd+L, etc.)
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+
+      // Only handle specific teleop keys
+      const rawKey = event.key;
+      const normalizedKey = rawKey.length === 1 ? rawKey.toLowerCase() : rawKey;
+      const allowedKeys = new Set([
+        "ArrowUp",
+        "ArrowDown",
+        "ArrowLeft",
+        "ArrowRight",
+        "w",
+        "a",
+        "s",
+        "d",
+        "q",
+        "e",
+        "o",
+        "c",
+        "Escape",
+      ]);
+      if (!allowedKeys.has(normalizedKey)) return;
+
       event.preventDefault();
 
       const keyboardTeleoperator = keyboardProcessRef.current.teleoperator;
@@ -209,7 +245,7 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
           keyboardTeleoperator as {
             updateKeyState: (key: string, pressed: boolean) => void;
           }
-        ).updateKeyState(key, true);
+        ).updateKeyState(normalizedKey, true);
       }
     },
     [teleopState.isActive]
@@ -219,7 +255,43 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
     (event: KeyboardEvent) => {
       if (!teleopState.isActive || !keyboardProcessRef.current) return;
 
-      const key = event.key;
+      // Ignore when user is typing in inputs/textareas or contenteditable elements
+      const target = event.target as HTMLElement | null;
+      const isEditableTarget = !!(
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable ||
+          target.closest(
+            '[role="textbox"], [contenteditable="true"], input, textarea, select'
+          ))
+      );
+      if (isEditableTarget) return;
+
+      // Allow browser/system shortcuts (e.g. Ctrl/Cmd+R, Ctrl/Cmd+L, etc.)
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+
+      // Only handle specific teleop keys
+      const rawKey = event.key;
+      const normalizedKey = rawKey.length === 1 ? rawKey.toLowerCase() : rawKey;
+      const allowedKeys = new Set([
+        "ArrowUp",
+        "ArrowDown",
+        "ArrowLeft",
+        "ArrowRight",
+        "w",
+        "a",
+        "s",
+        "d",
+        "q",
+        "e",
+        "o",
+        "c",
+        "Escape",
+      ]);
+      if (!allowedKeys.has(normalizedKey)) return;
+
       event.preventDefault();
 
       const keyboardTeleoperator = keyboardProcessRef.current.teleoperator;
@@ -228,7 +300,7 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
           keyboardTeleoperator as {
             updateKeyState: (key: string, pressed: boolean) => void;
           }
-        ).updateKeyState(key, false);
+        ).updateKeyState(normalizedKey, false);
       }
     },
     [teleopState.isActive]
