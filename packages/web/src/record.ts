@@ -1654,3 +1654,147 @@ export class LeRobotDatasetRecorder {
     }
   }
 }
+
+// Simple record() function API - wraps LeRobotDatasetRecorder
+import type {
+  RecordConfig,
+  RecordProcess,
+  RecordingState,
+  RecordingData,
+  RobotRecordingData,
+} from "./types/recording.js";
+
+/**
+ * Simple recording function that follows LeRobot.js conventions
+ *
+ * Records robot motor positions and teleoperation data using a clean function API
+ * that matches the patterns established by calibrate() and teleoperate().
+ *
+ * @param config Recording configuration with explicit teleoperator dependency
+ * @returns RecordProcess with start(), stop(), getState(), and result
+ *
+ * @example
+ * ```typescript
+ * // 1. Create teleoperation
+ * const teleoperationProcess = await teleoperate({
+ *   robot: connectedRobot,
+ *   teleop: { type: "keyboard" },
+ *   calibrationData: calibrationData,
+ * });
+ *
+ * // 2. Create recording with explicit teleoperator dependency
+ * const recordProcess = await record({
+ *   teleoperator: teleoperationProcess.teleoperator,
+ *   options: {
+ *     fps: 30,
+ *     taskDescription: "Pick and place task",
+ *     onDataUpdate: (data) => console.log(`Recorded ${data.frameCount} frames`),
+ *   }
+ * });
+ *
+ * // 3. Start both processes
+ * teleoperationProcess.start();
+ * recordProcess.start();
+ *
+ * // 4. Stop recording
+ * const robotData = await recordProcess.stop();
+ * ```
+ */
+export async function record(config: RecordConfig): Promise<RecordProcess> {
+  // Use the provided teleoperator (explicit dependency - good architecture!)
+  const recorder = new LeRobotDatasetRecorder(
+    [config.teleoperator], // Preserve excellent explicit dependency pattern
+    {}, // No video streams in simple API (move complex features to demo)
+    config.options?.fps || 30,
+    config.options?.taskDescription || "Robot recording"
+  );
+
+  let startTime = 0;
+  let resultPromise: Promise<RobotRecordingData> | null = null;
+  let stateUpdateInterval: NodeJS.Timeout | null = null;
+
+  const recordProcess: RecordProcess = {
+    start(): void {
+      startTime = Date.now();
+      recorder.startRecording();
+
+      // Set up state update polling for simple API callbacks
+      if (config.options?.onStateUpdate || config.options?.onDataUpdate) {
+        stateUpdateInterval = setInterval(() => {
+          if (recorder.isRecording) {
+            const state = recordProcess.getState();
+
+            if (config.options?.onStateUpdate) {
+              config.options.onStateUpdate(state);
+            }
+
+            if (config.options?.onDataUpdate) {
+              config.options.onDataUpdate({
+                frameCount: state.frameCount,
+                currentEpisode: state.episodeCount,
+                recentFrames: [], // Simplified for basic API
+              });
+            }
+          }
+        }, 100); // 10fps updates for UI responsiveness
+      }
+    },
+
+    async stop(): Promise<RobotRecordingData> {
+      if (stateUpdateInterval) {
+        clearInterval(stateUpdateInterval);
+        stateUpdateInterval = null;
+      }
+
+      const result = await recorder.stopRecording();
+
+      // Convert to simple API format (pure motor data, no video complexity)
+      const robotData: RobotRecordingData = {
+        episodes: recorder.episodes.map((episode) => episode.frames),
+        metadata: {
+          fps: config.options?.fps || 30,
+          robotType: "unknown", // Could extract from teleoperator if available
+          startTime: startTime,
+          endTime: Date.now(),
+          totalFrames: recorder.teleoperatorData.reduce(
+            (sum, ep) => sum + ep.length,
+            0
+          ),
+          totalEpisodes: recorder.teleoperatorData.length,
+        },
+      };
+
+      return robotData;
+    },
+
+    getState(): RecordingState {
+      return {
+        isActive: recorder.isRecording,
+        frameCount: recorder.teleoperatorData.reduce(
+          (sum, ep) => sum + ep.length,
+          0
+        ),
+        episodeCount: recorder.teleoperatorData.length,
+        duration: recorder.isRecording ? Date.now() - startTime : 0,
+        lastUpdate: Date.now(),
+      };
+    },
+
+    get result(): Promise<RobotRecordingData> {
+      if (!resultPromise) {
+        resultPromise = new Promise((resolve) => {
+          // Return promise that resolves when stop() is called
+          const originalStop = recordProcess.stop;
+          recordProcess.stop = async () => {
+            const data = await originalStop();
+            resolve(data);
+            return data;
+          };
+        });
+      }
+      return resultPromise;
+    },
+  };
+
+  return recordProcess;
+}

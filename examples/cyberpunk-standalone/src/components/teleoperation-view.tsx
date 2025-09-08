@@ -22,7 +22,6 @@ import {
 } from "@lerobot/web";
 import { getUnifiedRobotData } from "@/lib/unified-storage";
 import VirtualKey from "@/components/VirtualKey";
-import { Recorder } from "@/components/recorder";
 import { Canvas } from "@react-three/fiber";
 import { Physics } from "@react-three/cannon";
 import * as THREE from "three";
@@ -414,15 +413,6 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
   const keyStates = teleopState?.keyStates || {};
   const controls = SO100_KEYBOARD_CONTROLS;
 
-  // Memoize teleoperators array to prevent unnecessary re-renders of the Recorder component
-  const memoizedTeleoperators = useMemo(() => {
-    if (!directProcessRef.current) return [];
-
-    return [
-      directProcessRef.current?.teleoperator,
-    ].filter(Boolean);
-  }, [directProcessRef.current]);
-
   return (
     <>
       <Card className="border-0 rounded-none">
@@ -456,19 +446,37 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
                     <Power className="w-5 h-5 mr-2" /> Control Robot
                   </Button>
                 )}
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-mono text-muted-foreground uppercase">
-                    status:
-                  </span>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "border-primary/50 bg-primary/20 text-primary font-mono text-xs",
-                      teleopState?.isActive && "animate-pulse-slow"
-                    )}
-                  >
-                    {teleopState?.isActive ? "ACTIVE" : "STOPPED"}
-                  </Badge>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-mono text-muted-foreground uppercase">
+                      robot:
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "border-primary/50 bg-primary/20 text-primary font-mono text-xs",
+                        robot.isConnected
+                          ? "border-green-500/50 bg-green-500/20 text-green-400"
+                          : "border-red-500/50 bg-red-500/20 text-red-400"
+                      )}
+                    >
+                      {robot.isConnected ? "ONLINE" : "OFFLINE"}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-mono text-muted-foreground uppercase">
+                      control:
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "border-primary/50 bg-primary/20 text-primary font-mono text-xs",
+                        teleopState?.isActive && "animate-pulse-slow"
+                      )}
+                    >
+                      {teleopState?.isActive ? "ACTIVE" : "STOPPED"}
+                    </Badge>
+                  </div>
                 </div>
               </div>
             </div>
@@ -759,13 +767,6 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
           </div>
         </div>
       </Card>
-
-      {/* Robot Movement Recorder - Always show UI */}
-      <Recorder
-        teleoperators={memoizedTeleoperators}
-        robot={robot}
-        onNeedsTeleoperation={initializeTeleoperation}
-      />
     </>
   );
 }

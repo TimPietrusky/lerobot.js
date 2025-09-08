@@ -20,7 +20,13 @@ yarn add @lerobot/web
 ## Quick Start
 
 ```typescript
-import { findPort, releaseMotors, calibrate, teleoperate } from "@lerobot/web";
+import {
+  findPort,
+  releaseMotors,
+  calibrate,
+  teleoperate,
+  record,
+} from "@lerobot/web";
 
 // 1. find available robot ports (shows browser port dialog)
 console.log("🔍 finding available robot ports...");
@@ -387,7 +393,74 @@ await releaseMotors(robot, [1, 2, 3]);
 
 ---
 
-## Dataset Recording and Export
+### `record(config): Promise<RecordProcess>`
+
+Records robot motor positions and teleoperation data using a clean function API that matches the patterns established by `calibrate()` and `teleoperate()`.
+
+```typescript
+import { teleoperate, record } from "@lerobot/web";
+
+// 1. Create teleoperation first
+const teleoperationProcess = await teleoperate({
+  robot: connectedRobot,
+  teleop: { type: "keyboard" },
+  calibrationData: calibrationData,
+});
+
+// 2. Create recording with explicit teleoperator dependency
+const recordProcess = await record({
+  teleoperator: teleoperationProcess.teleoperator, // ← Explicit dependency
+  options: {
+    fps: 30,
+    taskDescription: "Pick and place task",
+    onDataUpdate: (data) => {
+      console.log(`Recorded ${data.frameCount} frames`);
+    },
+    onStateUpdate: (state) => {
+      console.log(`Recording active: ${state.isActive}`);
+    },
+  },
+});
+
+// 3. Start both processes
+teleoperationProcess.start();
+recordProcess.start();
+
+// 4. Stop recording when finished
+setTimeout(async () => {
+  const robotData = await recordProcess.stop();
+  console.log("Episodes:", robotData.episodes);
+  console.log("Metadata:", robotData.metadata);
+}, 30000);
+```
+
+#### Options
+
+- `config: RecordConfig`
+  - `teleoperator: WebTeleoperator` - The teleoperator to record from (explicit dependency)
+  - `options?: RecordOptions` - Optional recording configuration:
+    - `fps?: number` - Target frames per second (default: 30)
+    - `taskDescription?: string` - Description of the recording task
+    - `onDataUpdate?: (data: RecordingData) => void` - Real-time data updates
+    - `onStateUpdate?: (state: RecordingState) => void` - Recording state changes
+
+#### Returns: `RecordProcess`
+
+- `start(): void` - Start recording
+- `stop(): Promise<RobotRecordingData>` - Stop recording and get data
+- `getState(): RecordingState` - Current recording state
+- `result: Promise<RobotRecordingData>` - Promise that resolves when recording stops
+
+#### Why Explicit Teleoperator Dependency?
+
+- 🎯 **Clear**: You know exactly what gets recorded
+- 🔧 **Flexible**: Can record from any teleoperator
+- 🧪 **Testable**: Easy to mock teleoperator for testing
+- 📦 **Reusable**: Same teleoperator can serve multiple recorders
+
+---
+
+## Advanced Dataset Recording and Export
 
 The LeRobot.js library provides functionality to record teleoperator data and export it in the LeRobot dataset format, compatible with machine learning models.
 
@@ -400,10 +473,10 @@ import { LeRobotDatasetRecorder } from "@lerobot/web";
 
 // Create a recorder with teleoperator and video streams
 const recorder = new LeRobotDatasetRecorder(
-  [teleoperator],           // Array of teleoperators to record, currently only supports 1 teleoperator
-  { "main": videoStream },   // Video streams by camera key
-  30,                       // Target FPS
-  "Pick and place task"      // Task description
+  [teleoperator], // Array of teleoperators to record, currently only supports 1 teleoperator
+  { main: videoStream }, // Video streams by camera key
+  30, // Target FPS
+  "Pick and place task" // Task description
 );
 
 // Start recording
@@ -416,20 +489,20 @@ const recordingData = await recorder.stopRecording();
 
 // Export the dataset in various formats
 // 1. As a downloadable zip file
-await recorder.exportForLeRobot('zip-download');
+await recorder.exportForLeRobot("zip-download");
 
 // 2. Upload to Hugging Face
-const hfUploader = await recorder.exportForLeRobot('huggingface', {
-  repoName: 'my-robot-dataset',
-  accessToken: 'hf_...',
+const hfUploader = await recorder.exportForLeRobot("huggingface", {
+  repoName: "my-robot-dataset",
+  accessToken: "hf_...",
 });
 
 // 3. Upload to S3
-const s3Uploader = await recorder.exportForLeRobot('s3', {
-  bucketName: 'my-bucket',
-  accessKeyId: 'AKIA...',
-  secretAccessKey: '...',
-  region: 'us-east-1',
+const s3Uploader = await recorder.exportForLeRobot("s3", {
+  bucketName: "my-bucket",
+  accessKeyId: "AKIA...",
+  secretAccessKey: "...",
+  region: "us-east-1",
 });
 ```
 

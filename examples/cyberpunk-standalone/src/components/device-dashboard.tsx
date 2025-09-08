@@ -8,6 +8,7 @@ import {
   Pencil,
   Plus,
   ExternalLink,
+  Disc,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardFooter } from "@/components/ui/card";
@@ -31,6 +32,7 @@ interface DeviceDashboardProps {
   robots: RobotConnection[];
   onCalibrate: (robot: RobotConnection) => void;
   onTeleoperate: (robot: RobotConnection) => void;
+  onRecord: (robot: RobotConnection) => void;
   onRemove: (robotId: string) => void;
   onEdit: (robot: RobotConnection) => void;
   onFindNew: () => void;
@@ -42,6 +44,7 @@ export function DeviceDashboard({
   robots,
   onCalibrate,
   onTeleoperate,
+  onRecord,
   onRemove,
   onEdit,
   onFindNew,
@@ -162,7 +165,9 @@ export function DeviceDashboard({
                           variant="outline"
                           className={cn(
                             "border-primary/50 bg-primary/20 text-primary font-mono text-xs",
-                            robot.isConnected && "animate-pulse-slow"
+                            robot.isConnected
+                              ? "border-green-500/50 bg-green-500/20 text-green-400 animate-pulse-slow"
+                              : "border-red-500/50 bg-red-500/20 text-red-400"
                           )}
                         >
                           {robot.isConnected ? "ONLINE" : "OFFLINE"}
@@ -219,6 +224,14 @@ export function DeviceDashboard({
                         className="font-mono text-xs uppercase px-2"
                       >
                         <Gamepad2 className="w-3 h-3 mr-0.5" /> control
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onRecord(robot)}
+                        className="font-mono text-xs uppercase px-2"
+                      >
+                        <Disc className="w-3 h-3 mr-0.5" /> record
                       </Button>
                       <Button
                         variant="destructive"

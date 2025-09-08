@@ -13,6 +13,7 @@ import { EditRobotDialog } from "@/components/edit-robot-dialog";
 import { DeviceDashboard } from "@/components/device-dashboard";
 import { CalibrationView } from "@/components/calibration-view";
 import { TeleoperationView } from "@/components/teleoperation-view";
+import { RecordingView } from "@/components/recording-view";
 import { SetupCards } from "@/components/setup-cards";
 import { DocsSection } from "@/components/docs-section";
 import { RoadmapSection } from "@/components/roadmap-section";
@@ -225,29 +226,15 @@ function App() {
   };
 
   const handleCalibrate = (robot: RobotConnection) => {
-    if (!robot.isConnected) {
-      toast({
-        title: "Robot Not Connected",
-        description: "Please connect the robot before calibrating",
-        variant: "destructive",
-      });
-      return;
-    }
-
     navigate(`/device/${robot.serialNumber}/calibrate`);
   };
 
   const handleTeleoperate = (robot: RobotConnection) => {
-    if (!robot.isConnected) {
-      toast({
-        title: "Robot Not Connected",
-        description: "Please connect the robot before teleoperating",
-        variant: "destructive",
-      });
-      return;
-    }
-
     navigate(`/device/${robot.serialNumber}/control`);
+  };
+
+  const handleRecord = (robot: RobotConnection) => {
+    navigate(`/device/${robot.serialNumber}/record`);
   };
 
   const handleBackToDashboard = () => {
@@ -270,6 +257,7 @@ function App() {
                 robots={robots}
                 onCalibrate={handleCalibrate}
                 onTeleoperate={handleTeleoperate}
+                onRecord={handleRecord}
                 onRemove={handleRemoveRobot}
                 onEdit={setEditingRobot}
                 onFindNew={handleFindNewRobots}
@@ -297,6 +285,15 @@ function App() {
               />
             }
           />
+          <Route
+            path="/device/:serialNumber/record"
+            element={
+              <RecordPage
+                robots={robots}
+                onBackToDashboard={handleBackToDashboard}
+              />
+            }
+          />
         </Routes>
         <EditRobotDialog
           robot={editingRobot}
@@ -316,6 +313,7 @@ function DashboardPage({
   robots,
   onCalibrate,
   onTeleoperate,
+  onRecord,
   onRemove,
   onEdit,
   onFindNew,
@@ -326,6 +324,7 @@ function DashboardPage({
   robots: RobotConnection[];
   onCalibrate: (robot: RobotConnection) => void;
   onTeleoperate: (robot: RobotConnection) => void;
+  onRecord: (robot: RobotConnection) => void;
   onRemove: (robot: RobotConnection) => void;
   onEdit: (robot: RobotConnection | null) => void;
   onFindNew: () => void;
@@ -341,6 +340,7 @@ function DashboardPage({
           robots={robots}
           onCalibrate={onCalibrate}
           onTeleoperate={onTeleoperate}
+          onRecord={onRecord}
           onRemove={onRemove}
           onEdit={onEdit}
           onFindNew={onFindNew}
@@ -442,6 +442,43 @@ function ControlPage({
   );
 }
 
+// Record Page Component
+function RecordPage({
+  robots,
+  onBackToDashboard,
+}: {
+  robots: RobotConnection[];
+  onBackToDashboard: () => void;
+}) {
+  const { serialNumber } = useParams<{ serialNumber: string }>();
+  const selectedRobot = robots.find(
+    (robot) => robot.serialNumber === serialNumber
+  );
+
+  if (!selectedRobot) {
+    return (
+      <div>
+        <PageHeader onBackToDashboard={onBackToDashboard} />
+        <div className="text-center py-20">
+          <p className="text-muted-foreground">
+            Device not found or not connected.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <PageHeader
+        onBackToDashboard={onBackToDashboard}
+        selectedRobot={selectedRobot}
+      />
+      <RecordingView robot={selectedRobot} />
+    </div>
+  );
+}
+
 // Page Header Component
 function PageHeader({
   onBackToDashboard,
@@ -454,6 +491,7 @@ function PageHeader({
   const isDashboard = location.pathname === "/";
   const isCalibrating = location.pathname.includes("/calibrate");
   const isTeleoperating = location.pathname.includes("/control");
+  const isRecording = location.pathname.includes("/record");
 
   return (
     <div className="flex items-center justify-between mb-12">
@@ -476,6 +514,16 @@ function PageHeader({
               <span className="text-muted-foreground uppercase">
                 teleoperate:
               </span>{" "}
+              <span
+                className="text-primary text-glitch uppercase"
+                data-text={selectedRobot.robotId}
+              >
+                {selectedRobot.robotId?.toUpperCase()}
+              </span>
+            </h1>
+          ) : isRecording && selectedRobot ? (
+            <h1 className="font-mono text-4xl font-bold tracking-wider">
+              <span className="text-muted-foreground uppercase">record:</span>{" "}
               <span
                 className="text-primary text-glitch uppercase"
                 data-text={selectedRobot.robotId}

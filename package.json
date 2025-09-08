@@ -1,7 +1,7 @@
 {
   "name": "lerobot",
   "version": "0.0.0",
-  "description": "State-of-the-art AI for real-world robotics in JS",
+  "description": "Control your robots with JS, inspired by LeRobot (python)",
   "type": "module",
   "workspaces": [
     "packages/*"

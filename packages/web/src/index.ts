@@ -9,6 +9,7 @@ export { calibrate } from "./calibrate.js";
 export { teleoperate } from "./teleoperate.js";
 export { findPort } from "./find_port.js";
 export { releaseMotors } from "./release_motors.js";
+export { record } from "./record.js";
 
 // Browser support utilities
 export {
@@ -51,6 +52,14 @@ export type {
   KeyboardControl,
 } from "./types/robot-config.js";
 
+export type {
+  RecordConfig,
+  RecordProcess,
+  RecordingState,
+  RecordingData,
+  RobotRecordingData,
+} from "./types/recording.js";
+
 // Utilities (advanced users)
 export { WebSerialPortWrapper } from "./utils/serial-port-wrapper.js";
 export {
@@ -64,5 +73,5 @@ export {
 export { KEYBOARD_TELEOPERATOR_DEFAULTS } from "./teleoperators/index.js";
 
 // Record
-export { LeRobotDatasetRecorder } from "./record.js";
+export { LeRobotDatasetRecorder, LeRobotEpisode } from "./record.js";
 export { LeRobotHFUploader } from "./hf_uploader.js";

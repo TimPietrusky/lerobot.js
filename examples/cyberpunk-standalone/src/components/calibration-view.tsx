@@ -3,6 +3,7 @@ import { useState, useMemo, useEffect, useCallback } from "react";
 import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,6 +29,7 @@ import {
   type CalibrationMetadata,
 } from "@/lib/unified-storage";
 import { MotorCalibrationVisual } from "@/components/motor-calibration-visual";
+import { cn } from "@/lib/utils";
 
 interface CalibrationViewProps {
   robot: RobotConnection;
@@ -281,32 +283,50 @@ export function CalibrationView({ robot }: CalibrationViewProps) {
               </p>
             </div>
           </div>
-          <div className="flex gap-4">
-            {!isCalibrating ? (
-              <Button
-                onClick={handleStart}
-                size="lg"
-                disabled={isPreparing || !robot.isConnected}
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-mono text-muted-foreground uppercase">
+                robot status:
+              </span>
+              <Badge
+                variant="outline"
+                className={cn(
+                  "border-primary/50 bg-primary/20 text-primary font-mono text-xs",
+                  robot.isConnected
+                    ? "border-green-500/50 bg-green-500/20 text-green-400"
+                    : "border-red-500/50 bg-red-500/20 text-red-400"
+                )}
               >
-                {isPreparing
-                  ? "Preparing..."
-                  : calibrationResults
-                  ? "Re-calibrate"
-                  : "Start Calibration"}
+                {robot.isConnected ? "ONLINE" : "OFFLINE"}
+              </Badge>
+            </div>
+            <div className="flex gap-4">
+              {!isCalibrating ? (
+                <Button
+                  onClick={handleStart}
+                  size="lg"
+                  disabled={isPreparing || !robot.isConnected}
+                >
+                  {isPreparing
+                    ? "Preparing..."
+                    : calibrationResults
+                    ? "Re-calibrate"
+                    : "Start Calibration"}
+                </Button>
+              ) : (
+                <Button onClick={handleFinish} variant="destructive" size="lg">
+                  Finish Recording
+                </Button>
+              )}
+              <Button
+                onClick={downloadJson}
+                variant="outline"
+                size="lg"
+                disabled={!calibrationResults}
+              >
+                <Download className="w-4 h-4 mr-2" /> Download JSON
               </Button>
-            ) : (
-              <Button onClick={handleFinish} variant="destructive" size="lg">
-                Finish Recording
-              </Button>
-            )}
-            <Button
-              onClick={downloadJson}
-              variant="outline"
-              size="lg"
-              disabled={!calibrationResults}
-            >
-              <Download className="w-4 h-4 mr-2" /> Download JSON
-            </Button>
+            </div>
           </div>
         </div>
         <div className="pt-6 p-6">
