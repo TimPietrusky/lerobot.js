@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, memo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -98,6 +98,7 @@ export function Recorder({
   const [isRecording, setIsRecording] = useState(false);
   const [currentEpisode, setCurrentEpisode] = useState(0);
   const [persistedEpisodes, setPersistedEpisodes] = useState<any[]>([]);
+  const [uiTick, setUiTick] = useState(0);
   const [showDeleteEpisodesDialog, setShowDeleteEpisodesDialog] =
     useState(false);
   // Use huggingfaceApiKey from recorderSettings instead of separate state
@@ -299,22 +300,16 @@ export function Recorder({
     });
   };
 
-  // Reset frames by clearing the recorder data
-  const handleResetFrames = useCallback(() => {
-    if (isRecording) {
-      handleStopRecording();
-    }
+  // Force lightweight UI refresh while recording so episode table updates in near real-time
+  useEffect(() => {
+    if (!isRecording) return;
+    const id = setInterval(() => {
+      setUiTick((t) => (t + 1) % 1_000_000);
+    }, 500);
+    return () => clearInterval(id);
+  }, [isRecording]);
 
-    if (recorderRef.current) {
-      recorderRef.current.clearRecording();
-      setHasRecordedFrames(false);
-
-      toast({
-        title: "Frames Reset",
-        description: "All recorded frames have been cleared",
-      });
-    }
-  }, [isRecording, toast]);
+  // (Removed) Reset frames button in favor of Delete Episodes with confirmation
 
   // Load available cameras
   const loadAvailableCameras = useCallback(
@@ -1066,7 +1061,10 @@ export function Recorder({
                     className="w-full h-full object-cover"
                     ref={(video) => {
                       if (video && stream) {
-                        video.srcObject = stream;
+                        const current = video.srcObject as MediaStream | null;
+                        if (current !== stream) {
+                          video.srcObject = stream;
+                        }
                       }
                     }}
                   />
@@ -1185,15 +1183,6 @@ export function Recorder({
           <Button
             variant="outline"
             className="gap-2"
-            onClick={handleResetFrames}
-            disabled={isRecording || !hasRecordedFrames}
-          >
-            <Trash2 className="w-4 h-4" />
-            Reset Frames
-          </Button>
-          <Button
-            variant="outline"
-            className="gap-2"
             onClick={handleNextEpisode}
             disabled={!isRecording}
           >
@@ -1245,8 +1234,10 @@ export function Recorder({
       <div className="border border-white/10 rounded-md overflow-hidden">
         <TeleoperatorEpisodesView
           teleoperatorData={
-            recorderRef.current?.teleoperatorData || persistedEpisodes
+            (uiTick, recorderRef.current?.teleoperatorData || persistedEpisodes)
           }
+          isRecording={isRecording}
+          refreshTick={uiTick}
         />
       </div>
 
@@ -1277,3 +1268,5 @@ export function Recorder({
     </div>
   );
 }
+
+export const MemoRecorder = memo(Recorder);

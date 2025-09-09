@@ -1,10 +1,16 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import {
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+  useCallback,
+  startTransition,
+} from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import {
   Gamepad2,
@@ -29,7 +35,9 @@ import {
   type RobotConnection,
 } from "@lerobot/web";
 import { getUnifiedRobotData } from "@/lib/unified-storage";
-import { Recorder } from "@/components/recorder";
+import { MemoRecorder as Recorder } from "@/components/recorder";
+
+const UI_UPDATE_INTERVAL_MS = 100;
 
 interface RecordingViewProps {
   robot: RobotConnection;
@@ -64,7 +72,7 @@ export function RecordingView({ robot }: RecordingViewProps) {
   }, [robot.isConnected, controlEnabled, recorderCallbacks?.isRecording]);
   const keyboardProcessRef = useRef<TeleoperationProcess | null>(null);
   const directProcessRef = useRef<TeleoperationProcess | null>(null);
-  const { toast } = useToast();
+  const lastUiUpdateRef = useRef(0);
 
   // Load calibration data from unified storage
   const calibrationData = useMemo(() => {
@@ -94,7 +102,11 @@ export function RecordingView({ robot }: RecordingViewProps) {
         },
         calibrationData,
         onStateUpdate: (state: TeleoperationState) => {
-          setTeleopState(state);
+          const now = performance.now();
+          if (now - lastUiUpdateRef.current >= UI_UPDATE_INTERVAL_MS) {
+            lastUiUpdateRef.current = now;
+            startTransition(() => setTeleopState(state));
+          }
         },
       };
       const keyboardProcess = await teleoperate(keyboardConfig);
@@ -107,7 +119,11 @@ export function RecordingView({ robot }: RecordingViewProps) {
         },
         calibrationData,
         onStateUpdate: (state: TeleoperationState) => {
-          setTeleopState(state);
+          const now = performance.now();
+          if (now - lastUiUpdateRef.current >= UI_UPDATE_INTERVAL_MS) {
+            lastUiUpdateRef.current = now;
+            startTransition(() => setTeleopState(state));
+          }
         },
       };
       const directProcess = await teleoperate(directConfig);
@@ -131,16 +147,11 @@ export function RecordingView({ robot }: RecordingViewProps) {
       });
       return false;
     }
-  }, [robot, robot.robotType, calibrationData, toast]);
+  }, [robot, robot.robotType, calibrationData]);
 
   // Enable robot control for recording
   const enableControl = useCallback(async () => {
     if (!robot.isConnected) {
-      toast({
-        title: "Robot Not Connected",
-        description: "Please connect the robot before enabling control",
-        variant: "destructive",
-      });
       return false;
     }
 
@@ -160,19 +171,10 @@ export function RecordingView({ robot }: RecordingViewProps) {
       }
 
       setControlEnabled(true);
-      toast({
-        title: "Control Enabled",
-        description: `${selectedTeleoperatorType} teleoperator is now active for recording`,
-      });
       return true;
     }
     return false;
-  }, [
-    robot.isConnected,
-    initializeTeleoperation,
-    selectedTeleoperatorType,
-    toast,
-  ]);
+  }, [robot.isConnected, initializeTeleoperation, selectedTeleoperatorType]);
 
   // Disable robot control
   const disableControl = useCallback(async () => {
@@ -183,11 +185,7 @@ export function RecordingView({ robot }: RecordingViewProps) {
       directProcessRef.current.stop();
     }
     setControlEnabled(false);
-    toast({
-      title: "Control Disabled",
-      description: `${selectedTeleoperatorType} teleoperator has been stopped`,
-    });
-  }, [selectedTeleoperatorType, toast]);
+  }, [selectedTeleoperatorType]);
 
   // Keyboard event handlers (guarded to not interfere with inputs/shortcuts)
   const handleKeyDown = useCallback(
@@ -508,7 +506,7 @@ export function RecordingView({ robot }: RecordingViewProps) {
                         <Gamepad2 className="w-4 h-4" />
                       )}
                       {controlEnabled
-                        ? `✅ ${selectedTeleoperatorType} Control Active`
+                        ? `${selectedTeleoperatorType} Control Active`
                         : `Enable ${selectedTeleoperatorType} Control`}
                     </Button>
                   </div>
@@ -543,14 +541,7 @@ export function RecordingView({ robot }: RecordingViewProps) {
                   <p className="text-sm text-muted-foreground">
                     Click "Start Recording" to begin capturing robot movements.
                   </p>
-                  {controlEnabled && (
-                    <div className="mt-2">
-                      <span className="text-green-400 text-sm">
-                        ✅ Control ready - use "Start Recording" button in
-                        header
-                      </span>
-                    </div>
-                  )}
+                  {null}
                 </div>
               </div>
 
