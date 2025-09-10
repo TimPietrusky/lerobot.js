@@ -441,6 +441,26 @@ const response = await new Promise((resolve, reject) => {
   }
   ```
 
+##### 6. Media Recording Workflow (Web Cameras)
+
+**Required order of operations for video export to work correctly:**
+
+- Attach camera streams before recording: call `recorder.addVideoStream(key, stream)` on the same `LeRobotDatasetRecorder` instance before `startRecording()`.
+- Do not add/replace streams while recording: changing streams during an active recording is unsupported and will throw.
+- Stop before export: always stop recording before calling any export method so `MediaRecorder` can finalize the video blob.
+
+**Implementation notes:**
+
+- Use a separate preview stream and clone for recording (e.g., `const recordingStream = previewStream.clone()`) to avoid preview interruptions.
+- If your UI allows configuring cameras before enabling control, attach those streams to the recorder immediately after the recorder is created.
+- The recorder selects a supported container/mime per browser; exported files are placed under `videos/chunk-000/observation.images.<cameraName>/episode_000000.<ext>`.
+
+**Anti-patterns (avoid):**
+
+- Creating the recorder, starting recording, then adding cameras.
+- Mutating `videoStreams` during recording.
+- Exporting while recording is still active.
+
 #### Web Implementation Blockers Solved
 
 **These blockers were identified during SO-100 web calibration development:**
