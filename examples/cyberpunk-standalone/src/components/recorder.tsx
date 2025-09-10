@@ -132,34 +132,57 @@ export function Recorder({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const { toast } = useToast();
 
-  // Initialize the recorder when teleoperators are available
+  // Initialize the recorder when teleoperators are available,
+  // and attach any already-added cameras before recording starts
   useEffect(() => {
-    if (teleoperators.length > 0) {
+    if (teleoperators.length > 0 && !recorderRef.current) {
       recorderRef.current = new LeRobotDatasetRecorder(
         teleoperators,
-        additionalCameras,
-        30, // fps
+        {},
+        30,
         "Robot teleoperation recording"
       );
 
-      // Restore persisted episodes to the new recorder
+      // Restore episodes if any were persisted
       if (persistedEpisodes.length > 0) {
         (recorderRef.current as any).teleoperatorData = [...persistedEpisodes];
         setCurrentEpisode(persistedEpisodes.length - 1);
       }
-    } else {
-      // Persist episodes before clearing recorder
-      if (recorderRef.current?.teleoperatorData) {
-        setPersistedEpisodes((prev) => {
-          // Only update if we have new data
-          const currentData = recorderRef.current?.teleoperatorData || [];
-          return currentData.length > 0 ? [...currentData] : prev;
-        });
+
+      // Attach any cameras that were configured before control was enabled
+      const recorder = recorderRef.current as any;
+      for (const [key, stream] of Object.entries(additionalCameras)) {
+        try {
+          recorder.addVideoStream(key, stream as MediaStream);
+        } catch (e) {
+          console.warn("[Recorder] init: addVideoStream failed", key, e);
+        }
       }
-      // Clear recorder when no teleoperators available
-      recorderRef.current = null;
     }
-  }, [teleoperators, additionalCameras, persistedEpisodes]);
+  }, [teleoperators, persistedEpisodes, additionalCameras]);
+
+  // Sync additional cameras into recorder without re-creating it
+  useEffect(() => {
+    if (!recorderRef.current) return;
+    if (isRecording) return; // don't change streams during recording
+    const recorder = recorderRef.current as any;
+    for (const [key, stream] of Object.entries(additionalCameras)) {
+      const existing = recorder.videoStreams?.[key] as MediaStream | undefined;
+      if (!existing) {
+        try {
+          recorder.addVideoStream(key, stream);
+        } catch (e) {
+          console.warn("Failed to add video stream", key, e);
+        }
+      } else if (existing !== stream) {
+        // Update to new stream before recording starts
+        recorder.videoStreams[key] = stream;
+        if (!recorder.videoChunks?.[key]) {
+          recorder.videoChunks[key] = [];
+        }
+      }
+    }
+  }, [additionalCameras, isRecording]);
 
   // Notify parent of recorder state changes
   useEffect(() => {
@@ -220,10 +243,8 @@ export function Recorder({
       // Persist episodes when stopping recording
       setPersistedEpisodes([...recorderRef.current.teleoperatorData]);
 
-      toast({
-        title: "Recording Stopped",
-        description: `Episode ${currentEpisode} completed with ${result.teleoperatorData.length} frames`,
-      });
+      // Force a small delay to ensure videoBlobs populated before export
+      await new Promise((r) => setTimeout(r, 50));
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Failed to stop recording";
@@ -243,10 +264,6 @@ export function Recorder({
       if (isRecording) {
         (recorderRef.current as any).teleoperatorData.push(
           new LeRobotEpisode()
-        );
-        console.log(
-          "Created new episode after delete, teleoperatorData:",
-          recorderRef.current.teleoperatorData
         );
       }
     }
@@ -284,15 +301,6 @@ export function Recorder({
     // Create a new episode in the teleoperatorData array
     // This is needed because currentEpisode always points to the last episode
     (recorderRef.current as any).teleoperatorData.push(new LeRobotEpisode());
-
-    console.log(
-      "After next episode - teleoperatorData:",
-      recorderRef.current.teleoperatorData
-    );
-    console.log(
-      "After next episode - teleoperatorData.length:",
-      recorderRef.current.teleoperatorData.length
-    );
 
     toast({
       title: "Next Episode Started",
@@ -762,16 +770,21 @@ export function Recorder({
   }, [availableCameras, cameraPermissionState, restoreSavedCameras]);
 
   const handleDownloadZip = async () => {
-    if (!recorderRef.current) {
+    if (!recorderRef.current) return;
+    try {
+      if (isRecording) {
+        await handleStopRecording();
+      }
+      await recorderRef.current.exportForLeRobot("zip-download");
+    } catch (e) {
       toast({
-        title: "Download Error",
-        description: "Recorder not initialized",
+        title: "Export Error",
+        description:
+          e instanceof Error ? e.message : "Failed to export the dataset",
         variant: "destructive",
       });
       return;
     }
-
-    await recorderRef.current.exportForLeRobot("zip-download");
     toast({
       title: "Download Started",
       description: "Your dataset is being downloaded as a ZIP file",
@@ -779,14 +792,7 @@ export function Recorder({
   };
 
   const handleUploadToHuggingFace = async () => {
-    if (!recorderRef.current) {
-      toast({
-        title: "Upload Error",
-        description: "Recorder not initialized",
-        variant: "destructive",
-      });
-      return;
-    }
+    if (!recorderRef.current) return;
 
     if (!recorderSettings.huggingfaceApiKey) {
       toast({
