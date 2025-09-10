@@ -338,6 +338,7 @@ export class LeRobotDatasetRecorder {
   mediaRecorders: { [key: string]: MediaRecorder };
   videoChunks: { [key: string]: Blob[] };
   videoBlobs: { [key: string]: Blob };
+  private videoMimeByKey: { [key: string]: { mime: string; ext: string } };
   teleoperatorData: LeRobotEpisode[];
   private _isRecording: boolean;
   private episodeIndex: number = 0;
@@ -383,6 +384,7 @@ export class LeRobotDatasetRecorder {
     this.videoChunks = {};
     this.videoBlobs = {};
     this.videoStreams = {};
+    this.videoMimeByKey = {};
     this.teleoperatorData = [];
     this._isRecording = false;
     this.fps = fps;
@@ -391,6 +393,26 @@ export class LeRobotDatasetRecorder {
     for (const [key, stream] of Object.entries(videoStreams)) {
       this.addVideoStream(key, stream);
     }
+  }
+
+  private static getSupportedRecorderType(): { mime: string; ext: string } {
+    const candidates: { mime: string; ext: string }[] = [
+      { mime: "video/webm;codecs=vp9", ext: "webm" },
+      { mime: "video/webm;codecs=vp8", ext: "webm" },
+      { mime: "video/webm", ext: "webm" },
+      { mime: "video/mp4;codecs=h264", ext: "mp4" },
+      { mime: "video/mp4", ext: "mp4" },
+    ];
+    for (const c of candidates) {
+      if (
+        (window as any).MediaRecorder &&
+        MediaRecorder.isTypeSupported &&
+        MediaRecorder.isTypeSupported(c.mime)
+      ) {
+        return c;
+      }
+    }
+    return { mime: "video/webm", ext: "webm" };
   }
 
   get isRecording(): boolean {
@@ -407,21 +429,18 @@ export class LeRobotDatasetRecorder {
    * @param stream The media stream to record from
    */
   addVideoStream(key: string, stream: MediaStream) {
-    console.log("Adding video stream", key);
     if (this._isRecording) {
       throw new Error("Cannot add video streams while recording");
     }
 
     // Add to video streams dictionary
     this.videoStreams[key] = stream;
-
-    // Initialize MediaRecorder for this stream
-    this.mediaRecorders[key] = new MediaRecorder(stream, {
-      mimeType: "video/mp4",
-    });
-
-    // add a video chunk array for this stream
+    // Initialize chunks storage
     this.videoChunks[key] = [];
+
+    // Pre-warm container selection for consistent extension even if added before start
+    const { mime, ext } = LeRobotDatasetRecorder.getSupportedRecorderType();
+    this.videoMimeByKey[key] = { mime, ext };
   }
 
   /**
@@ -466,7 +485,6 @@ export class LeRobotDatasetRecorder {
    * Starts recording for all teleoperators and video streams
    */
   startRecording() {
-    console.log("Starting recording");
     if (this._isRecording) {
       console.warn("Recording already in progress");
       return;
@@ -479,14 +497,13 @@ export class LeRobotDatasetRecorder {
 
     // Start recording video streams
     Object.entries(this.videoStreams).forEach(([key, stream]) => {
-      // Create a media recorder for this stream
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: "video/mp4",
-      });
+      // Pick a supported mime/container pair per browser
+      const { mime, ext } = LeRobotDatasetRecorder.getSupportedRecorderType();
+      this.videoMimeByKey[key] = { mime, ext };
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: mime });
 
       // Handle data available events
       mediaRecorder.ondataavailable = (event) => {
-        console.log("data available for", key);
         if (event.data && event.data.size > 0) {
           this.videoChunks[key].push(event.data);
         }
@@ -495,8 +512,6 @@ export class LeRobotDatasetRecorder {
       // Save the recorder and start recording
       this.mediaRecorders[key] = mediaRecorder;
       mediaRecorder.start(1000); // Capture in 1-second chunks
-
-      console.log(`Started recording video stream: ${key}`);
     });
   }
 
@@ -560,7 +575,8 @@ export class LeRobotDatasetRecorder {
           recorder.onstop = () => {
             // Combine all chunks into a single blob
             const chunks = this.videoChunks[key] || [];
-            const blob = new Blob(chunks, { type: "video/mp4" });
+            const mime = this.videoMimeByKey[key]?.mime || "video/webm";
+            const blob = new Blob(chunks, { type: mime });
             this.videoBlobs[key] = blob;
             resolve();
           };
@@ -1409,10 +1425,11 @@ export class LeRobotDatasetRecorder {
       },
     ];
 
-    // Add video blobs with proper paths
+    // Add video blobs with proper paths (use container extension based on recorded mime)
     for (const [key, blob] of Object.entries(videoBlobs)) {
+      const ext = this.videoMimeByKey[key]?.ext || "webm";
       blobArray.push({
-        path: `videos/chunk-000/observation.images.${key}/episode_000000.mp4`,
+        path: `videos/chunk-000/observation.images.${key}/episode_000000.${ext}`,
         content: blob,
       });
     }
