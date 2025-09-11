@@ -1,17 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, memo } from "react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCaption,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -36,20 +26,36 @@ import {
   Edit2,
   Check,
 } from "lucide-react";
-import { LeRobotDatasetRecorder, LeRobotDatasetRow, NonIndexedLeRobotDatasetRow, LeRobotEpisode } from "@lerobot/web";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { LeRobotDatasetRecorder, LeRobotEpisode } from "@lerobot/web";
 import { TeleoperatorEpisodesView } from "./teleoperator-episodes-view";
 
 interface RecorderProps {
   teleoperators: any[];
   robot: any; // eslint-disable-line @typescript-eslint/no-explicit-any
   onNeedsTeleoperation: () => Promise<boolean>;
+  showConfigure: boolean;
+  onRecorderReady?: (callbacks: {
+    startRecording: () => Promise<void>;
+    stopRecording: () => Promise<void>;
+    isRecording: boolean;
+  }) => void;
   videoStreams?: { [key: string]: MediaStream };
 }
 
-
-
 interface RecorderSettings {
   huggingfaceApiKey: string;
+  huggingfaceRepoName?: string;
+  huggingfacePrivate?: boolean;
   cameraConfigs: {
     [cameraName: string]: {
       deviceId: string;
@@ -72,6 +78,8 @@ function getRecorderSettings(): RecorderSettings {
   }
   return {
     huggingfaceApiKey: "",
+    huggingfaceRepoName: "",
+    huggingfacePrivate: true,
     cameraConfigs: {},
   };
 }
@@ -88,9 +96,15 @@ export function Recorder({
   teleoperators,
   robot,
   onNeedsTeleoperation,
+  showConfigure,
+  onRecorderReady,
 }: RecorderProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [currentEpisode, setCurrentEpisode] = useState(0);
+  const [persistedEpisodes, setPersistedEpisodes] = useState<any[]>([]);
+  const [uiTick, setUiTick] = useState(0);
+  const [showDeleteEpisodesDialog, setShowDeleteEpisodesDialog] =
+    useState(false);
   // Use huggingfaceApiKey from recorderSettings instead of separate state
   const [cameraName, setCameraName] = useState("");
   const [additionalCameras, setAdditionalCameras] = useState<{
@@ -105,8 +119,7 @@ export function Recorder({
   const [cameraPermissionState, setCameraPermissionState] = useState<
     "unknown" | "granted" | "denied"
   >("unknown");
-  const [showCameraConfig, setShowCameraConfig] = useState(false);
-  const [showConfigure, setShowConfigure] = useState(false);
+
   const [recorderSettings, setRecorderSettings] = useState<RecorderSettings>(
     () => getRecorderSettings()
   );
@@ -115,68 +128,104 @@ export function Recorder({
     null
   );
   const [editingCameraNewName, setEditingCameraNewName] = useState("");
-  const [huggingfaceApiKey, setHuggingfaceApiKey] = useState("")
+  const [sourceSelectorOpenFor, setSourceSelectorOpenFor] = useState<
+    string | null
+  >(null);
+  const [uploadState, setUploadState] = useState<
+    { status: "idle" } | { status: "uploading" } | { status: "done" }
+  >({ status: "idle" });
+
   const recorderRef = useRef<LeRobotDatasetRecorder | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const { toast } = useToast();
 
-  // Initialize the recorder when teleoperators are available
+  // Initialize the recorder when teleoperators are available,
+  // and attach any already-added cameras before recording starts
   useEffect(() => {
-    if (teleoperators.length > 0) {
+    if (teleoperators.length > 0 && !recorderRef.current) {
       recorderRef.current = new LeRobotDatasetRecorder(
         teleoperators,
-        additionalCameras,
-        30, // fps
+        {},
+        30,
         "Robot teleoperation recording"
       );
-    }
-  }, [teleoperators, additionalCameras]);
 
-  const handleStartRecording = async () => {
-    // If teleoperators aren't available, initialize teleoperation first
-    if (teleoperators.length === 0) {
-      toast({
-        title: "Initializing...",
-        description: `Setting up robot control for ${robot.robotId || "robot"}`,
-      });
-
-      const success = await onNeedsTeleoperation();
-      if (!success) {
-        toast({
-          title: "Recording Error",
-          description: "Failed to initialize robot control",
-          variant: "destructive",
-        });
-        return;
+      // Restore episodes if any were persisted
+      if (persistedEpisodes.length > 0) {
+        (recorderRef.current as any).teleoperatorData = [...persistedEpisodes];
+        setCurrentEpisode(persistedEpisodes.length - 1);
       }
 
-      // Wait a moment for the recorder to initialize with new teleoperators
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      // Attach any cameras that were configured before control was enabled
+      const recorder = recorderRef.current as any;
+      for (const [key, stream] of Object.entries(additionalCameras)) {
+        try {
+          recorder.addVideoStream(key, stream as MediaStream);
+        } catch (e) {
+          console.warn("[Recorder] init: addVideoStream failed", key, e);
+        }
+      }
     }
+  }, [teleoperators, persistedEpisodes, additionalCameras]);
 
+  // Sync additional cameras into recorder without re-creating it
+  useEffect(() => {
+    if (!recorderRef.current) return;
+    if (isRecording) return; // don't change streams during recording
+    const recorder = recorderRef.current as any;
+    for (const [key, stream] of Object.entries(additionalCameras)) {
+      const existing = recorder.videoStreams?.[key] as MediaStream | undefined;
+      if (!existing) {
+        try {
+          recorder.addVideoStream(key, stream);
+        } catch (e) {
+          console.warn("Failed to add video stream", key, e);
+        }
+      } else if (existing !== stream) {
+        // Update to new stream before recording starts
+        recorder.videoStreams[key] = stream;
+        if (!recorder.videoChunks?.[key]) {
+          recorder.videoChunks[key] = [];
+        }
+      }
+    }
+  }, [additionalCameras, isRecording]);
+
+  // Notify parent of recorder state changes
+  useEffect(() => {
+    if (onRecorderReady) {
+      onRecorderReady({
+        startRecording: handleStartRecordingClick,
+        stopRecording: handleStopRecording,
+        isRecording: isRecording,
+      });
+    }
+  }, [isRecording, onRecorderReady]);
+
+  // Simple recording start - just like the original working version
+  const handleStartRecordingClick = async () => {
     if (!recorderRef.current) {
       toast({
         title: "Recording Error",
-        description: "Recorder not ready yet. Please try again.",
+        description: "Recorder not ready yet. Please enable control first.",
         variant: "destructive",
       });
       return;
     }
 
     try {
-      // Set the episode index
-      recorderRef.current.setEpisodeIndex(currentEpisode);
-      recorderRef.current.setTaskIndex(0); // Default task index
+      // Default task index (episode index is auto-managed by recorder now)
+      recorderRef.current.setTaskIndex(0);
 
       // Start recording
       recorderRef.current.startRecording();
       setIsRecording(true);
       setHasRecordedFrames(true);
 
-      toast({
-        title: "Recording Started",
-        description: `Episode ${currentEpisode} is now recording`,
-      });
+      // Sync current episode to recorder's latest
+      setCurrentEpisode(
+        Math.max(0, (recorderRef.current.teleoperatorData.length || 1) - 1)
+      );
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Failed to start recording";
@@ -197,10 +246,11 @@ export function Recorder({
       const result = await recorderRef.current.stopRecording();
       setIsRecording(false);
 
-      toast({
-        title: "Recording Stopped",
-        description: `Episode ${currentEpisode} completed with ${result.teleoperatorData.length} frames`,
-      });
+      // Persist episodes when stopping recording
+      setPersistedEpisodes([...recorderRef.current.teleoperatorData]);
+
+      // Force a small delay to ensure videoBlobs populated before export
+      await new Promise((r) => setTimeout(r, 50));
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Failed to stop recording";
@@ -212,37 +262,54 @@ export function Recorder({
     }
   };
 
-  const handleNextEpisode = () => {
-    // Make sure we're not recording
-    if (isRecording) {
-      handleStopRecording();
-    }
-
-    // Increment episode counter
-    setCurrentEpisode((prev) => prev + 1);
-
-    toast({
-      title: "New Episode",
-      description: `Ready to record episode ${currentEpisode + 1}`,
-    });
-  };
-
-  // Reset frames by clearing the recorder data
-  const handleResetFrames = useCallback(() => {
-    if (isRecording) {
-      handleStopRecording();
-    }
-
+  const handleDeleteEpisodes = async () => {
     if (recorderRef.current) {
       recorderRef.current.clearRecording();
-      setHasRecordedFrames(false);
 
-      toast({
-        title: "Frames Reset",
-        description: "All recorded frames have been cleared",
-      });
+      // If currently recording, create a new episode so recording can continue
+      if (isRecording) {
+        (recorderRef.current as any).teleoperatorData.push(
+          new LeRobotEpisode()
+        );
+      }
     }
-  }, [isRecording, toast]);
+
+    // Clear persisted episodes only if not recording
+    if (!isRecording) {
+      setPersistedEpisodes([]);
+    }
+
+    setCurrentEpisode(0);
+    setHasRecordedFrames(isRecording); // Keep true if recording, false if not
+    setShowDeleteEpisodesDialog(false);
+
+    // No toast needed; dialog confirmation provides sufficient feedback
+  };
+
+  const handleNextEpisode = () => {
+    if (!isRecording || !recorderRef.current) {
+      return;
+    }
+
+    // Finalize current video segment and start a new one; advances episode index
+    recorderRef.current
+      .nextEpisodeSegment()
+      .then((newIndex) => setCurrentEpisode(newIndex))
+      .catch(() => {
+        /* noop */
+      });
+  };
+
+  // Force lightweight UI refresh while recording so episode table updates in near real-time
+  useEffect(() => {
+    if (!isRecording) return;
+    const id = setInterval(() => {
+      setUiTick((t) => (t + 1) % 1_000_000);
+    }, 500);
+    return () => clearInterval(id);
+  }, [isRecording]);
+
+  // (Removed) Reset frames button in favor of Delete Episodes with confirmation
 
   // Load available cameras
   const loadAvailableCameras = useCallback(
@@ -373,6 +440,79 @@ export function Recorder({
       }
     },
     [previewStream, toast]
+  );
+
+  // Change camera source for an already-added camera card
+  const handleChangeCameraSourceForCard = useCallback(
+    async (cameraName: string, deviceId: string) => {
+      if (hasRecordedFrames) {
+        toast({
+          title: "Camera Error",
+          description:
+            "Cannot change camera source after recording has started",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      try {
+        // Create new stream for selected device
+        const newStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            deviceId: { exact: deviceId },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+        });
+
+        // Replace existing stream in additionalCameras
+        setAdditionalCameras((prev) => {
+          const next = { ...prev };
+          const old = next[cameraName];
+          if (old) {
+            old.getTracks().forEach((t) => t.stop());
+          }
+          next[cameraName] = newStream;
+          return next;
+        });
+
+        // Update persistent config
+        const selected = availableCameras.find((c) => c.deviceId === deviceId);
+        const newSettings = {
+          ...recorderSettings,
+          cameraConfigs: { ...recorderSettings.cameraConfigs },
+        };
+        if (!newSettings.cameraConfigs[cameraName]) {
+          newSettings.cameraConfigs[cameraName] = {
+            deviceId,
+            deviceLabel: selected?.label || `Camera ${deviceId.slice(0, 8)}...`,
+          };
+        } else {
+          newSettings.cameraConfigs[cameraName].deviceId = deviceId;
+          newSettings.cameraConfigs[cameraName].deviceLabel =
+            selected?.label || `Camera ${deviceId.slice(0, 8)}...`;
+        }
+        setRecorderSettings(newSettings);
+        saveRecorderSettings(newSettings);
+
+        setSourceSelectorOpenFor(null);
+        toast({
+          title: "Camera Source Updated",
+          description: `\"${cameraName}\" now uses \"${
+            selected?.label || deviceId
+          }\"`,
+        });
+      } catch (error) {
+        toast({
+          title: "Camera Error",
+          description: `Failed to switch camera: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+          variant: "destructive",
+        });
+      }
+    },
+    [hasRecordedFrames, availableCameras, recorderSettings, toast]
   );
 
   // Add a new camera to the recorder
@@ -622,31 +762,26 @@ export function Recorder({
   }, [availableCameras, cameraPermissionState, restoreSavedCameras]);
 
   const handleDownloadZip = async () => {
-    if (!recorderRef.current) {
+    if (!recorderRef.current) return;
+    try {
+      if (isRecording) {
+        await handleStopRecording();
+      }
+      await recorderRef.current.exportForLeRobot("zip-download");
+    } catch (e) {
       toast({
-        title: "Download Error",
-        description: "Recorder not initialized",
+        title: "Export Error",
+        description:
+          e instanceof Error ? e.message : "Failed to export the dataset",
         variant: "destructive",
       });
       return;
     }
-
-    await recorderRef.current.exportForLeRobot("zip-download");
-    toast({
-      title: "Download Started",
-      description: "Your dataset is being downloaded as a ZIP file",
-    });
+    // No toast; the browser download prompt is sufficient feedback
   };
 
   const handleUploadToHuggingFace = async () => {
-    if (!recorderRef.current) {
-      toast({
-        title: "Upload Error",
-        description: "Recorder not initialized",
-        variant: "destructive",
-      });
-      return;
-    }
+    if (!recorderRef.current) return;
 
     if (!recorderSettings.huggingfaceApiKey) {
       toast({
@@ -658,25 +793,33 @@ export function Recorder({
     }
 
     try {
-      toast({
-        title: "Upload Started",
-        description: "Uploading dataset to Hugging Face...",
-      });
-
-      // Generate a unique repository name
-      const repoName = `lerobot-recording-${Date.now()}`;
+      // Use provided repo name or generate one
+      const repoName =
+        (recorderSettings.huggingfaceRepoName || "").trim() ||
+        `lerobot-recording-${Date.now()}`;
 
       const uploader = await recorderRef.current.exportForLeRobot(
         "huggingface",
         {
           repoName,
           accessToken: recorderSettings.huggingfaceApiKey,
+          // @ts-expect-error: library supports privateRepo via options passthrough
+          privateRepo: !!recorderSettings.huggingfacePrivate,
         }
       );
 
-      uploader.addEventListener("progress", (event: Event) => {
-        console.log(event);
-      });
+      // Progress UI next to button
+      setUploadState({ status: "uploading" });
+      const onProgress = (_event: Event) => {
+        // Spinner-only UI; keep uploading state
+        setUploadState({ status: "uploading" });
+      };
+      const onFinished = () => setUploadState({ status: "done" });
+      const onError = () => setUploadState({ status: "idle" });
+      uploader.addEventListener("progress", onProgress);
+      uploader.addEventListener("finished", onFinished);
+      uploader.addEventListener("error", onError);
+      // No fake progress; spinner indicates activity
     } catch (error) {
       const errorMessage =
         error instanceof Error
@@ -690,529 +833,172 @@ export function Recorder({
     }
   };
 
-  // Helper function to format duration
-  const formatDuration = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins.toString().padStart(2, "0")}:${secs
-      .toString()
-      .padStart(2, "0")}`;
-  };
-
   return (
-    <Card className="border-0 rounded-none mt-6">
-      <div className="p-4 border-b border-white/10">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-1 h-8 bg-primary"></div>
-            <div>
-              <h3 className="text-xl font-bold text-foreground font-mono tracking-wider uppercase">
-                robot movement recorder
-              </h3>
-              <p className="text-sm text-muted-foreground font-mono">
-                dataset <span className="text-muted-foreground">recording</span>{" "}
-                interface
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-6">
-            <div className="border-l border-white/10 pl-6 flex items-center gap-4">
-              <Button
-                variant="outline"
-                size="lg"
-                className="gap-2"
-                onClick={() => setShowConfigure(!showConfigure)}
-              >
-                <Settings className="w-5 h-5" />
-                Configure
-              </Button>
-
-              <Button
-                variant={isRecording ? "destructive" : "default"}
-                size="lg"
-                className="gap-2"
-                onClick={
-                  isRecording ? handleStopRecording : handleStartRecording
-                }
-              >
-                {isRecording ? (
-                  <>
-                    <Square className="w-5 h-5" />
-                    Stop Recording
-                  </>
-                ) : (
-                  <>
-                    <Record className="w-5 h-5" />
-                    Start Recording
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="p-6 space-y-6">
-        {/* Recorder Settings - Toggleable Inline */}
-        {showConfigure && (
-          <div className="space-y-6">
-            {/* Hugging Face Settings */}
-            <div className="space-y-3">
-              <h3 className="text-lg font-semibold text-foreground">
-                Settings
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-sm text-muted-foreground">
-                    Hugging Face API Key
-                  </label>
-                  <Input
-                    placeholder="Enter your Hugging Face API key"
-                    value={recorderSettings.huggingfaceApiKey}
+    <div className="space-y-6">
+      {/* Recorder Settings - Toggleable Inline */}
+      {showConfigure && (
+        <div className="space-y-6">
+          {/* Hugging Face Settings */}
+          <div className="space-y-3">
+            <h3 className="text-lg font-semibold text-foreground">Settings</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm text-muted-foreground">
+                  Hugging Face API Key
+                </label>
+                <Input
+                  placeholder="Enter your Hugging Face API key"
+                  value={recorderSettings.huggingfaceApiKey}
+                  onChange={(e) => {
+                    const newSettings = {
+                      ...recorderSettings,
+                      huggingfaceApiKey: e.target.value,
+                    };
+                    setRecorderSettings(newSettings);
+                    saveRecorderSettings(newSettings);
+                  }}
+                  type="password"
+                  className="bg-black/20 border-white/10"
+                />
+                <p className="text-xs text-white/50">
+                  Required to upload datasets to Hugging Face Hub
+                </p>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm text-muted-foreground">
+                  Hugging Face Repo Name
+                </label>
+                <Input
+                  placeholder="e.g. my-dataset-name"
+                  value={recorderSettings.huggingfaceRepoName || ""}
+                  onChange={(e) => {
+                    const newSettings = {
+                      ...recorderSettings,
+                      huggingfaceRepoName: e.target.value,
+                    };
+                    setRecorderSettings(newSettings);
+                    saveRecorderSettings(newSettings);
+                  }}
+                  className="bg-black/20 border-white/10"
+                />
+                <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    className="accent-white"
+                    checked={!!recorderSettings.huggingfacePrivate}
                     onChange={(e) => {
                       const newSettings = {
                         ...recorderSettings,
-                        huggingfaceApiKey: e.target.value,
+                        huggingfacePrivate: e.target.checked,
                       };
                       setRecorderSettings(newSettings);
                       saveRecorderSettings(newSettings);
                     }}
-                    type="password"
-                    className="bg-black/20 border-white/10"
                   />
-                  <p className="text-xs text-white/50">
-                    Required to upload datasets to Hugging Face Hub
-                  </p>
-                </div>
+                  Private repository
+                </label>
               </div>
             </div>
+          </div>
 
-            {/* Camera Configuration */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-foreground">
-                Camera Setup
-              </h3>
-              <div className="bg-black/40 border border-white/20 p-6">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* Left Column: Camera Selection & Adding */}
-                  <div className="space-y-4">
-                    {/* Camera Selection and Refresh */}
+          {/* Camera Configuration */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold text-foreground">
+              Camera Setup
+            </h3>
+            <div className="bg-black/40 border border-white/20 p-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Left Column: Camera Selection & Adding */}
+                <div className="space-y-4">
+                  {/* Camera Selection and Refresh */}
 
-                    {/* Camera Access Request */}
-                    {cameraPermissionState === "unknown" && (
-                      <div className="space-y-3">
-                        <div className="bg-black/60 border border-white/20 rounded-lg p-4 text-center">
-                          <Camera className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                          <p className="text-sm text-white/70 mb-3">
-                            Camera access needed to configure cameras
-                          </p>
+                  {/* Camera Access Request */}
+                  {cameraPermissionState === "unknown" && (
+                    <div className="space-y-3">
+                      <div className="bg-black/60 border border-white/20 rounded-lg p-4 text-center">
+                        <Camera className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                        <p className="text-sm text-white/70 mb-3">
+                          Camera access needed to configure cameras
+                        </p>
+                        <Button
+                          onClick={() => loadAvailableCameras(false)}
+                          variant="outline"
+                          className="gap-2"
+                          disabled={isLoadingCameras}
+                        >
+                          <Camera className="w-4 h-4" />
+                          {isLoadingCameras
+                            ? "Loading..."
+                            : "Request Camera Access"}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Camera Access Denied */}
+                  {cameraPermissionState === "denied" && (
+                    <div className="space-y-3">
+                      <div className="bg-red-900/20 border border-red-500/20 rounded-lg p-4 text-center">
+                        <Camera className="w-8 h-8 mx-auto mb-2 opacity-50 text-red-400" />
+                        <p className="text-sm text-red-300 mb-1">
+                          Camera access denied
+                        </p>
+                        <p className="text-xs text-red-400">
+                          Please allow camera access in your browser settings
+                          and refresh
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Camera List with Refresh Button */}
+                  {cameraPermissionState === "granted" &&
+                    availableCameras.length > 0 && (
+                      <div className="space-y-2">
+                        <label className="text-sm text-white/70">
+                          Select Camera:
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <Select
+                            value={selectedCameraId}
+                            onValueChange={switchCameraPreview}
+                            disabled={hasRecordedFrames}
+                          >
+                            <SelectTrigger className="flex-1 bg-black/20 border-white/10">
+                              <SelectValue placeholder="Choose a camera" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableCameras.map((camera) => (
+                                <SelectItem
+                                  key={camera.deviceId}
+                                  value={camera.deviceId}
+                                >
+                                  {camera.label ||
+                                    `Camera ${camera.deviceId.slice(0, 8)}...`}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                           <Button
                             onClick={() => loadAvailableCameras(false)}
-                            variant="outline"
-                            className="gap-2"
+                            variant="ghost"
+                            size="sm"
+                            className="gap-2 text-white/70 hover:text-white"
                             disabled={isLoadingCameras}
                           >
-                            <Camera className="w-4 h-4" />
-                            {isLoadingCameras
-                              ? "Loading..."
-                              : "Request Camera Access"}
+                            <RefreshCw
+                              className={`w-4 h-4 ${
+                                isLoadingCameras ? "animate-spin" : ""
+                              }`}
+                            />
+                            Refresh
                           </Button>
                         </div>
                       </div>
                     )}
 
-                    {/* Camera Access Denied */}
-                    {cameraPermissionState === "denied" && (
-                      <div className="space-y-3">
-                        <div className="bg-red-900/20 border border-red-500/20 rounded-lg p-4 text-center">
-                          <Camera className="w-8 h-8 mx-auto mb-2 opacity-50 text-red-400" />
-                          <p className="text-sm text-red-300 mb-1">
-                            Camera access denied
-                          </p>
-                          <p className="text-xs text-red-400">
-                            Please allow camera access in your browser settings
-                            and refresh
-                          </p>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Camera List with Refresh Button */}
-                    {cameraPermissionState === "granted" &&
-                      availableCameras.length > 0 && (
-                        <div className="space-y-2">
-                          <label className="text-sm text-white/70">
-                            Select Camera:
-                          </label>
-                          <div className="flex items-center gap-2">
-                            <Select
-                              value={selectedCameraId}
-                              onValueChange={switchCameraPreview}
-                              disabled={hasRecordedFrames}
-                            >
-                              <SelectTrigger className="flex-1 bg-black/20 border-white/10">
-                                <SelectValue placeholder="Choose a camera" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {availableCameras.map((camera) => (
-                                  <SelectItem
-                                    key={camera.deviceId}
-                                    value={camera.deviceId}
-                                  >
-                                    {camera.label ||
-                                      `Camera ${camera.deviceId.slice(
-                                        0,
-                                        8
-                                      )}...`}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <Button
-                              onClick={() => loadAvailableCameras(false)}
-                              variant="ghost"
-                              size="sm"
-                              className="gap-2 text-white/70 hover:text-white"
-                              disabled={isLoadingCameras}
-                            >
-                              <RefreshCw
-                                className={`w-4 h-4 ${
-                                  isLoadingCameras ? "animate-spin" : ""
-                                }`}
-                              />
-                              Refresh
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-
-                    {/* Camera Name Input */}
-                    {selectedCameraId && (
-                      <div className="space-y-2">
-                        <label className="text-sm text-white/70">
-                          Camera Name:
-                        </label>
-                        <Input
-                          placeholder="e.g., 'Overhead View', 'Side Angle', 'Close-up'"
-                          value={cameraName}
-                          onChange={(e) => setCameraName(e.target.value)}
-                          className="bg-black/20 border-white/10"
-                          disabled={hasRecordedFrames}
-                        />
-                        <p className="text-xs text-white/50">
-                          Give this camera a descriptive name for your recording
-                          setup
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Add Camera Button */}
-                    {selectedCameraId && (
-                      <div className="flex justify-end">
-                        <Button
-                          onClick={handleAddCamera}
-                          className="gap-2"
-                          disabled={
-                            hasRecordedFrames ||
-                            !cameraName.trim() ||
-                            !selectedCameraId ||
-                            !previewStream
-                          }
-                        >
-                          <PlusCircle className="w-4 h-4" />
-                          Add Camera to Recorder
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Right Column: Camera Preview */}
-                  <div className="space-y-4">
-                    <div className="aspect-video bg-black/60 border border-white/20 rounded-lg overflow-hidden">
-                      {previewStream ? (
-                        <video
-                          ref={videoRef}
-                          autoPlay
-                          muted
-                          playsInline
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-white/60">
-                          <div className="text-center">
-                            <Camera className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                            {cameraPermissionState === "unknown" ? (
-                              <p className="text-sm">
-                                Request camera access to preview
-                              </p>
-                            ) : cameraPermissionState === "denied" ? (
-                              <p className="text-sm">Camera access denied</p>
-                            ) : availableCameras.length === 0 ? (
-                              <p className="text-sm">No cameras available</p>
-                            ) : !selectedCameraId ? (
-                              <p className="text-sm">
-                                Select a camera to preview
-                              </p>
-                            ) : (
-                              <p className="text-sm">Loading preview...</p>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Added Camera Previews */}
-        {Object.keys(additionalCameras).length > 0 && (
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-foreground">
-              Active Cameras
-            </h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {Object.entries(additionalCameras).map(([cameraName, stream]) => (
-                <div
-                  key={cameraName}
-                  className="bg-black/40 border border-white/20 rounded-lg p-3 space-y-2"
-                >
-                  <div className="aspect-video bg-black/60 border border-white/10 rounded overflow-hidden">
-                    <video
-                      autoPlay
-                      muted
-                      playsInline
-                      className="w-full h-full object-cover"
-                      ref={(video) => {
-                        if (video && stream) {
-                          video.srcObject = stream;
-                        }
-                      }}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    {editingCameraName === cameraName ? (
-                      <div className="flex items-center gap-1 flex-1">
-                        <Input
-                          value={editingCameraNewName}
-                          onChange={(e) =>
-                            setEditingCameraNewName(e.target.value)
-                          }
-                          className="text-xs h-6 bg-black/20 border-white/10"
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              handleConfirmCameraNameEdit(cameraName);
-                            } else if (e.key === "Escape") {
-                              handleCancelCameraNameEdit();
-                            }
-                          }}
-                          autoFocus
-                        />
-                        <button
-                          onClick={() =>
-                            handleConfirmCameraNameEdit(cameraName)
-                          }
-                          className="text-green-400 hover:text-green-300 p-1"
-                        >
-                          <Check className="w-3 h-3" />
-                        </button>
-                        <button
-                          onClick={handleCancelCameraNameEdit}
-                          className="text-red-400 hover:text-red-300 p-1"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => handleStartEditingCameraName(cameraName)}
-                        className="text-sm font-medium text-white/90 truncate hover:text-white cursor-pointer flex items-center gap-1 flex-1"
-                        disabled={hasRecordedFrames}
-                      >
-                        {cameraName}
-                        <Edit2 className="w-3 h-3 opacity-50" />
-                      </button>
-                    )}
-                    <button
-                      onClick={() => handleRemoveCamera(cameraName)}
-                      className="text-red-400 hover:text-red-300 p-1 ml-2"
-                      disabled={hasRecordedFrames}
-                      title="Remove camera"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Episode Management & Dataset Actions */}
-        <div className="flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              className="gap-2"
-              onClick={handleResetFrames}
-              disabled={isRecording || !hasRecordedFrames}
-            >
-              <Trash2 className="w-4 h-4" />
-              Reset Frames
-            </Button>
-            <Button
-              variant="outline"
-              className="gap-2"
-              onClick={handleNextEpisode}
-              disabled={isRecording}
-            >
-              <PlusCircle className="w-4 h-4" />
-              Next Episode
-            </Button>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              className="gap-2"
-              onClick={handleDownloadZip}
-              disabled={recorderRef.current?.teleoperatorData.length === 0 || isRecording}
-            >
-              <Download className="w-4 h-4" />
-              Download as ZIP
-            </Button>
-            <Button
-              variant="outline"
-              className="gap-2"
-              onClick={handleUploadToHuggingFace}
-              disabled={
-                recorderRef.current?.teleoperatorData.length === 0 ||
-                isRecording ||
-                !recorderSettings.huggingfaceApiKey
-              }
-            >
-              <Upload className="w-4 h-4" />
-              Upload to Hugging Face
-            </Button>
-          </div>
-        </div>
-
-        <div className="border border-white/10 rounded-md overflow-hidden">
-          <TeleoperatorEpisodesView teleoperatorData={recorderRef.current?.teleoperatorData} />
-        </div>
-
-        {/* Camera Configuration */}
-        <div className="border-t border-white/10 pt-4 mt-4">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold">Camera Setup</h3>
-            <Button
-              onClick={() => setShowCameraConfig(!showCameraConfig)}
-              variant="outline"
-              size="sm"
-              className="gap-2"
-            >
-              <Camera className="w-4 h-4" />
-              {showCameraConfig ? "Hide Camera Config" : "Configure Cameras"}
-            </Button>
-          </div>
-
-          {showCameraConfig && (
-            <div className="bg-black/40 border border-white/20 rounded-lg p-6 mb-4">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Left Column: Camera Preview & Selection */}
-                <div className="space-y-4">
-                  <h4 className="text-md font-semibold text-white/90">
-                    Camera Preview
-                  </h4>
-
-                  {/* Camera Preview */}
-                  <div className="aspect-video bg-black/60 border border-white/20 rounded-lg overflow-hidden">
-                    {previewStream ? (
-                      <video
-                        ref={videoRef}
-                        autoPlay
-                        muted
-                        playsInline
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-white/60">
-                        <div className="text-center">
-                          <Camera className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                          {isLoadingCameras ? (
-                            <p>Loading cameras...</p>
-                          ) : cameraPermissionState === "denied" ? (
-                            <div>
-                              <p>Camera access denied</p>
-                              <p className="text-xs mt-1">
-                                Please allow camera access and refresh
-                              </p>
-                            </div>
-                          ) : availableCameras.length === 0 ? (
-                            <p>Click "Load Cameras" to start</p>
-                          ) : (
-                            <p>Select a camera to preview</p>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Camera Controls */}
-                  <div className="space-y-3">
-                    <Button
-                      onClick={() => loadAvailableCameras(false)}
-                      variant="outline"
-                      className="w-full gap-2"
-                      disabled={hasRecordedFrames || isLoadingCameras}
-                    >
-                      <Camera className="w-4 h-4" />
-                      {isLoadingCameras
-                        ? "Loading..."
-                        : availableCameras.length > 0
-                        ? "Refresh Cameras"
-                        : "Load Cameras"}
-                    </Button>
-
-                    {availableCameras.length > 0 && (
-                      <div className="space-y-2">
-                        <label className="text-sm text-white/70">
-                          Select Camera:
-                        </label>
-                        <Select
-                          value={selectedCameraId}
-                          onValueChange={switchCameraPreview}
-                          disabled={hasRecordedFrames}
-                        >
-                          <SelectTrigger className="w-full bg-black/20 border-white/10">
-                            <SelectValue placeholder="Choose a camera" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {availableCameras.map((camera) => (
-                              <SelectItem
-                                key={camera.deviceId}
-                                value={camera.deviceId}
-                              >
-                                {camera.label ||
-                                  `Camera ${camera.deviceId.slice(0, 8)}...`}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Right Column: Camera Naming & Adding */}
-                <div className="space-y-4">
-                  <h4 className="text-md font-semibold text-white/90">
-                    Add to Recorder
-                  </h4>
-
-                  <div className="space-y-4">
+                  {/* Camera Name Input */}
+                  {selectedCameraId && (
                     <div className="space-y-2">
                       <label className="text-sm text-white/70">
                         Camera Name:
@@ -1229,90 +1015,305 @@ export function Recorder({
                         setup
                       </p>
                     </div>
+                  )}
 
-                    <Button
-                      onClick={handleAddCamera}
-                      className="w-full gap-2"
-                      disabled={
-                        hasRecordedFrames ||
-                        !cameraName.trim() ||
-                        !selectedCameraId ||
-                        !previewStream
-                      }
-                    >
-                      <PlusCircle className="w-4 h-4" />
-                      Add Camera to Recorder
-                    </Button>
+                  {/* Add Camera Button */}
+                  {selectedCameraId && (
+                    <div className="flex justify-end">
+                      <Button
+                        onClick={handleAddCamera}
+                        className="gap-2"
+                        disabled={
+                          hasRecordedFrames ||
+                          !cameraName.trim() ||
+                          !selectedCameraId ||
+                          !previewStream
+                        }
+                      >
+                        <PlusCircle className="w-4 h-4" />
+                        Add Camera to Recorder
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Right Column: Camera Preview */}
+                <div className="space-y-4">
+                  <div className="aspect-video bg-black/60 border border-white/20 rounded-lg overflow-hidden">
+                    {previewStream ? (
+                      <video
+                        ref={videoRef}
+                        autoPlay
+                        muted
+                        playsInline
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-white/60">
+                        <div className="text-center">
+                          <Camera className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                          {cameraPermissionState === "unknown" ? (
+                            <p className="text-sm">
+                              Request camera access to preview
+                            </p>
+                          ) : cameraPermissionState === "denied" ? (
+                            <p className="text-sm">Camera access denied</p>
+                          ) : availableCameras.length === 0 ? (
+                            <p className="text-sm">No cameras available</p>
+                          ) : !selectedCameraId ? (
+                            <p className="text-sm">
+                              Select a camera to preview
+                            </p>
+                          ) : (
+                            <p className="text-sm">Loading preview...</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
             </div>
-          )}
+          </div>
+        </div>
+      )}
 
-          {/* Display added cameras */}
-          {Object.keys(additionalCameras).length > 0 && (
-            <div className="mb-4 space-y-2">
-              <p className="text-sm text-muted-foreground">Added Cameras:</p>
-              <div className="flex flex-wrap gap-2">
-                {Object.keys(additionalCameras).map((name) => (
-                  <Badge
-                    key={name}
-                    variant="secondary"
-                    className="flex items-center gap-1 py-1 px-2"
-                  >
-                    {name}
+      {/* Added Camera Previews */}
+      {Object.keys(additionalCameras).length > 0 && (
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold text-foreground">
+            Active Cameras
+          </h3>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {Object.entries(additionalCameras).map(([cameraName, stream]) => (
+              <div
+                key={cameraName}
+                className="bg-black/40 border border-white/20 rounded-lg p-3 space-y-2"
+              >
+                <div className="aspect-video bg-black/60 border border-white/10 rounded overflow-hidden">
+                  <video
+                    autoPlay
+                    muted
+                    playsInline
+                    className="w-full h-full object-cover"
+                    ref={(video) => {
+                      if (video && stream) {
+                        const current = video.srcObject as MediaStream | null;
+                        if (current !== stream) {
+                          video.srcObject = stream;
+                        }
+                      }
+                    }}
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  {editingCameraName === cameraName ? (
+                    <div className="flex items-center gap-1 flex-1">
+                      <Input
+                        value={editingCameraNewName}
+                        onChange={(e) =>
+                          setEditingCameraNewName(e.target.value)
+                        }
+                        className="text-xs h-6 bg-black/20 border-white/10"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            handleConfirmCameraNameEdit(cameraName);
+                          } else if (e.key === "Escape") {
+                            handleCancelCameraNameEdit();
+                          }
+                        }}
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => handleConfirmCameraNameEdit(cameraName)}
+                        className="text-green-400 hover:text-green-300 p-1"
+                      >
+                        <Check className="w-3 h-3" />
+                      </button>
+                      <button
+                        onClick={handleCancelCameraNameEdit}
+                        className="text-red-400 hover:text-red-300 p-1"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ) : (
                     <button
-                      onClick={() => handleRemoveCamera(name)}
-                      className="ml-1 text-muted-foreground hover:text-destructive"
+                      onClick={() => handleStartEditingCameraName(cameraName)}
+                      className="text-sm font-medium text-white/90 truncate hover:text-white cursor-pointer flex items-center gap-1 flex-1"
                       disabled={hasRecordedFrames}
                     >
-                      ×
+                      {cameraName}
+                      <Edit2 className="w-3 h-3 opacity-50" />
                     </button>
-                  </Badge>
-                ))}
+                  )}
+                  <div className="flex items-center gap-2 ml-2">
+                    {/* Inline camera source selector trigger */}
+                    <div className="relative">
+                      <button
+                        onClick={() =>
+                          setSourceSelectorOpenFor((prev) =>
+                            prev === cameraName ? null : cameraName
+                          )
+                        }
+                        className="text-white/80 hover:text-white p-1"
+                        disabled={hasRecordedFrames}
+                        title="Change camera source"
+                      >
+                        <Camera className="w-4 h-4" />
+                      </button>
+                      {sourceSelectorOpenFor === cameraName && (
+                        <div className="absolute right-0 mt-1 z-20 bg-black/90 border border-white/20 rounded p-2 w-64">
+                          <label className="text-xs text-white/70">
+                            Camera Source
+                          </label>
+                          <Select
+                            value={
+                              recorderSettings.cameraConfigs[cameraName]
+                                ?.deviceId || ""
+                            }
+                            onValueChange={(deviceId) =>
+                              handleChangeCameraSourceForCard(
+                                cameraName,
+                                deviceId
+                              )
+                            }
+                            disabled={hasRecordedFrames}
+                          >
+                            <SelectTrigger className="w-full h-8 bg-black/20 border-white/10">
+                              <SelectValue placeholder="Choose a camera" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableCameras.map((cam) => (
+                                <SelectItem
+                                  key={cam.deviceId}
+                                  value={cam.deviceId}
+                                >
+                                  {cam.label ||
+                                    `Camera ${cam.deviceId.slice(0, 8)}...`}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => handleRemoveCamera(cameraName)}
+                      className="text-red-400 hover:text-red-300 p-1"
+                      disabled={hasRecordedFrames}
+                      title="Remove camera"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
-          )}
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Episode Management & Dataset Actions */}
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={handleNextEpisode}
+            disabled={!isRecording}
+          >
+            <PlusCircle className="w-4 h-4" />
+            Next Episode
+          </Button>
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={() => setShowDeleteEpisodesDialog(true)}
+            disabled={
+              persistedEpisodes.length === 0 &&
+              (recorderRef.current?.teleoperatorData.length || 0) === 0
+            }
+          >
+            <Trash2 className="w-4 h-4" />
+            Delete Episodes
+          </Button>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              className="gap-2"
-              onClick={handleDownloadZip}
-              disabled={recorderRef.current?.teleoperatorData.length === 0 || isRecording}
-            >
-              <Download className="w-4 h-4" />
-              Download as ZIP
-            </Button>
-
-            {/* Reset Frames button moved to top bar */}
-          </div>
-
-          <div className="flex items-center gap-2 flex-1">
-            <Button
-              variant="outline"
-              className="gap-2"
-              onClick={handleUploadToHuggingFace}
-              disabled={
-                recorderRef.current?.teleoperatorData.length === 0 || isRecording || !huggingfaceApiKey
-              }
-            >
-              <Upload className="w-4 h-4" />
-              Upload to HuggingFace
-            </Button>
-
-            <Input
-              placeholder="HuggingFace API Key"
-              value={huggingfaceApiKey}
-              onChange={(e) => setHuggingfaceApiKey(e.target.value)}
-              className="flex-1 bg-black/20 border-white/10"
-              type="password"
-            />
-          </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={handleDownloadZip}
+            disabled={
+              recorderRef.current?.teleoperatorData.length === 0 || isRecording
+            }
+          >
+            <Download className="w-4 h-4" />
+            Download as ZIP
+          </Button>
+          <Button
+            variant="outline"
+            className="gap-2 relative"
+            onClick={handleUploadToHuggingFace}
+            disabled={
+              recorderRef.current?.teleoperatorData.length === 0 ||
+              isRecording ||
+              !recorderSettings.huggingfaceApiKey ||
+              uploadState.status === "uploading"
+            }
+          >
+            <Upload className="w-4 h-4" />
+            {uploadState.status === "uploading" ? (
+              <span className="inline-flex items-center gap-2">
+                Uploading…
+                <span className="inline-block w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin" />
+              </span>
+            ) : uploadState.status === "done" ? (
+              <span>Uploaded ✓</span>
+            ) : (
+              <span>Upload to Hugging Face</span>
+            )}
+          </Button>
         </div>
       </div>
-    </Card>
+
+      <div className="border border-white/10 rounded-md overflow-hidden">
+        <TeleoperatorEpisodesView
+          teleoperatorData={
+            (uiTick, recorderRef.current?.teleoperatorData || persistedEpisodes)
+          }
+          isRecording={isRecording}
+          refreshTick={uiTick}
+        />
+      </div>
+
+      {/* Delete Episodes Confirmation Dialog */}
+      <AlertDialog
+        open={showDeleteEpisodesDialog}
+        onOpenChange={setShowDeleteEpisodesDialog}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete All Episodes</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete all recorded episodes? This action
+              cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteEpisodes}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete Episodes
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
   );
 }
+
+export const MemoRecorder = memo(Recorder);

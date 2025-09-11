@@ -338,10 +338,15 @@ export class LeRobotDatasetRecorder {
   mediaRecorders: { [key: string]: MediaRecorder };
   videoChunks: { [key: string]: Blob[] };
   videoBlobs: { [key: string]: Blob };
+  private videoBlobsByEpisode: {
+    [episodeIndex: number]: { [key: string]: Blob };
+  };
+  private videoMimeByKey: { [key: string]: { mime: string; ext: string } };
   teleoperatorData: LeRobotEpisode[];
   private _isRecording: boolean;
   private episodeIndex: number = 0;
   private taskIndex: number = 0;
+  private currentVideoSegmentEpisodeIndex: number | null = null;
   fps: number;
   taskDescription: string;
 
@@ -382,7 +387,9 @@ export class LeRobotDatasetRecorder {
     this.mediaRecorders = {};
     this.videoChunks = {};
     this.videoBlobs = {};
+    this.videoBlobsByEpisode = {};
     this.videoStreams = {};
+    this.videoMimeByKey = {};
     this.teleoperatorData = [];
     this._isRecording = false;
     this.fps = fps;
@@ -391,6 +398,26 @@ export class LeRobotDatasetRecorder {
     for (const [key, stream] of Object.entries(videoStreams)) {
       this.addVideoStream(key, stream);
     }
+  }
+
+  private static getSupportedRecorderType(): { mime: string; ext: string } {
+    const candidates: { mime: string; ext: string }[] = [
+      { mime: "video/webm;codecs=vp9", ext: "webm" },
+      { mime: "video/webm;codecs=vp8", ext: "webm" },
+      { mime: "video/webm", ext: "webm" },
+      { mime: "video/mp4;codecs=h264", ext: "mp4" },
+      { mime: "video/mp4", ext: "mp4" },
+    ];
+    for (const c of candidates) {
+      if (
+        (window as any).MediaRecorder &&
+        MediaRecorder.isTypeSupported &&
+        MediaRecorder.isTypeSupported(c.mime)
+      ) {
+        return c;
+      }
+    }
+    return { mime: "video/webm", ext: "webm" };
   }
 
   get isRecording(): boolean {
@@ -407,21 +434,18 @@ export class LeRobotDatasetRecorder {
    * @param stream The media stream to record from
    */
   addVideoStream(key: string, stream: MediaStream) {
-    console.log("Adding video stream", key);
     if (this._isRecording) {
       throw new Error("Cannot add video streams while recording");
     }
 
     // Add to video streams dictionary
     this.videoStreams[key] = stream;
-
-    // Initialize MediaRecorder for this stream
-    this.mediaRecorders[key] = new MediaRecorder(stream, {
-      mimeType: "video/mp4",
-    });
-
-    // add a video chunk array for this stream
+    // Initialize chunks storage
     this.videoChunks[key] = [];
+
+    // Pre-warm container selection for consistent extension even if added before start
+    const { mime, ext } = LeRobotDatasetRecorder.getSupportedRecorderType();
+    this.videoMimeByKey[key] = { mime, ext };
   }
 
   /**
@@ -466,7 +490,6 @@ export class LeRobotDatasetRecorder {
    * Starts recording for all teleoperators and video streams
    */
   startRecording() {
-    console.log("Starting recording");
     if (this._isRecording) {
       console.warn("Recording already in progress");
       return;
@@ -474,19 +497,26 @@ export class LeRobotDatasetRecorder {
 
     this._isRecording = true;
 
-    // add a new episode
+    // Always start a brand new episode using the next available index
+    this.episodeIndex = this.teleoperatorData.length;
     this.teleoperatorData.push(new LeRobotEpisode());
+    this.currentVideoSegmentEpisodeIndex = this.episodeIndex;
 
     // Start recording video streams
     Object.entries(this.videoStreams).forEach(([key, stream]) => {
-      // Create a media recorder for this stream
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: "video/mp4",
-      });
+      // Pick a supported mime/container pair per browser
+      const supported =
+        this.videoMimeByKey[key] ||
+        LeRobotDatasetRecorder.getSupportedRecorderType();
+      const { mime, ext } = supported;
+      this.videoMimeByKey[key] = { mime, ext };
+
+      // Reset chunks for a clean segment start
+      this.videoChunks[key] = [];
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: mime });
 
       // Handle data available events
       mediaRecorder.ondataavailable = (event) => {
-        console.log("data available for", key);
         if (event.data && event.data.size > 0) {
           this.videoChunks[key].push(event.data);
         }
@@ -495,8 +525,6 @@ export class LeRobotDatasetRecorder {
       // Save the recorder and start recording
       this.mediaRecorders[key] = mediaRecorder;
       mediaRecorder.start(1000); // Capture in 1-second chunks
-
-      console.log(`Started recording video stream: ${key}`);
     });
   }
 
@@ -560,8 +588,17 @@ export class LeRobotDatasetRecorder {
           recorder.onstop = () => {
             // Combine all chunks into a single blob
             const chunks = this.videoChunks[key] || [];
-            const blob = new Blob(chunks, { type: "video/mp4" });
+            const mime = this.videoMimeByKey[key]?.mime || "video/webm";
+            const blob = new Blob(chunks, { type: mime });
             this.videoBlobs[key] = blob;
+            const segmentEpisodeIndex =
+              this.currentVideoSegmentEpisodeIndex ?? this.episodeIndex;
+            if (!this.videoBlobsByEpisode[segmentEpisodeIndex]) {
+              this.videoBlobsByEpisode[segmentEpisodeIndex] = {} as any;
+            }
+            this.videoBlobsByEpisode[segmentEpisodeIndex][key] = blob;
+            // Prepare for any subsequent recording
+            this.videoChunks[key] = [];
             resolve();
           };
 
@@ -580,11 +617,94 @@ export class LeRobotDatasetRecorder {
   }
 
   /**
+   * Finalizes the current video segment and immediately starts a new one
+   * while continuing the recording session. Also advances to the next
+   * episode and begins collecting frames under the new episode index.
+   *
+   * @returns The new episode index
+   */
+  async nextEpisodeSegment(): Promise<number> {
+    if (!this._isRecording) {
+      console.warn("nextEpisodeSegment() called while not recording");
+      // Ensure episode index points to last episode if any
+      this.episodeIndex = Math.max(0, this.teleoperatorData.length - 1);
+      return this.episodeIndex;
+    }
+
+    const oldSegmentEpisodeIndex =
+      this.currentVideoSegmentEpisodeIndex ?? this.episodeIndex;
+
+    // Stop current media recorders and persist the segment blobs under the old episode index
+    const stopPromises = Object.entries(this.mediaRecorders).map(
+      ([key, recorder]) => {
+        return new Promise<void>((resolve) => {
+          if (recorder.state === "inactive") {
+            resolve();
+            return;
+          }
+          recorder.onstop = () => {
+            const chunks = this.videoChunks[key] || [];
+            const mime = this.videoMimeByKey[key]?.mime || "video/webm";
+            const blob = new Blob(chunks, { type: mime });
+            if (!this.videoBlobsByEpisode[oldSegmentEpisodeIndex]) {
+              this.videoBlobsByEpisode[oldSegmentEpisodeIndex] = {} as any;
+            }
+            this.videoBlobsByEpisode[oldSegmentEpisodeIndex][key] = blob;
+            // Reset chunks for the next segment
+            this.videoChunks[key] = [];
+            resolve();
+          };
+          recorder.stop();
+        });
+      }
+    );
+
+    await Promise.all(stopPromises);
+
+    // Advance to the next episode
+    const newEpisodeIndex = this.teleoperatorData.length;
+    this.episodeIndex = newEpisodeIndex;
+    this.teleoperatorData.push(new LeRobotEpisode());
+
+    // Start new media recorders for the next segment
+    Object.entries(this.videoStreams).forEach(([key, stream]) => {
+      const supported =
+        this.videoMimeByKey[key] ||
+        LeRobotDatasetRecorder.getSupportedRecorderType();
+      const { mime, ext } = supported;
+      this.videoMimeByKey[key] = { mime, ext };
+
+      // Ensure a fresh chunk buffer
+      this.videoChunks[key] = [];
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: mime });
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          this.videoChunks[key].push(event.data);
+        }
+      };
+      this.mediaRecorders[key] = mediaRecorder;
+      mediaRecorder.start(1000);
+    });
+
+    // Point subsequent stop() to the new episode index
+    this.currentVideoSegmentEpisodeIndex = newEpisodeIndex;
+
+    return newEpisodeIndex;
+  }
+
+  /**
    * Clears the teleoperator data and video blobs
    */
   clearRecording() {
     this.teleoperatorData = [];
     this.videoBlobs = {};
+    this.videoBlobsByEpisode = {} as any;
+    // Reset video chunk buffers so future segments don't include cleared data
+    for (const key of Object.keys(this.videoChunks)) {
+      this.videoChunks[key] = [];
+    }
+    this.episodeIndex = 0;
+    this.currentVideoSegmentEpisodeIndex = null;
   }
 
   /**
@@ -951,7 +1071,12 @@ export class LeRobotDatasetRecorder {
     }
 
     // Create video info objects for each video stream
-    const videos_info: VideoInfo[] = Object.keys(this.videoBlobs).map((key) => {
+    const cameraKeySet = new Set<string>();
+    Object.keys(this.videoBlobs).forEach((k) => cameraKeySet.add(k));
+    Object.values(this.videoBlobsByEpisode || {}).forEach((byCam) =>
+      Object.keys(byCam || {}).forEach((k) => cameraKeySet.add(k))
+    );
+    const videos_info: VideoInfo[] = Array.from(cameraKeySet).map((key) => {
       // Default values - in a production environment, you would extract
       // these from the actual video metadata using the key to identify the video source
       console.log(`Generating metadata for video stream: ${key}`);
@@ -973,6 +1098,11 @@ export class LeRobotDatasetRecorder {
     let video_files_size_in_mb = 0;
     for (const blob of Object.values(this.videoBlobs)) {
       video_files_size_in_mb += blob.size / (1024 * 1024);
+    }
+    for (const byCam of Object.values(this.videoBlobsByEpisode || {})) {
+      for (const blob of Object.values(byCam || {})) {
+        video_files_size_in_mb += (blob as Blob).size / (1024 * 1024);
+      }
     }
     video_files_size_in_mb = Math.round(video_files_size_in_mb);
 
@@ -996,8 +1126,13 @@ export class LeRobotDatasetRecorder {
    * @returns Statistics object for the LeRobot dataset
    */
   async getStatistics(data: any[]): Promise<any> {
-    // Get camera keys from the video blobs
-    const cameraKeys = Object.keys(this.videoBlobs);
+    // Get camera keys from any available blobs
+    const cameraKeySet2 = new Set<string>();
+    Object.keys(this.videoBlobs).forEach((k) => cameraKeySet2.add(k));
+    Object.values(this.videoBlobsByEpisode || {}).forEach((byCam) =>
+      Object.keys(byCam || {}).forEach((k) => cameraKeySet2.add(k))
+    );
+    const cameraKeys = Array.from(cameraKeySet2);
 
     // Generate stats using the data and camera keys
     return getStats(data, cameraKeys);
@@ -1409,12 +1544,33 @@ export class LeRobotDatasetRecorder {
       },
     ];
 
-    // Add video blobs with proper paths
-    for (const [key, blob] of Object.entries(videoBlobs)) {
-      blobArray.push({
-        path: `videos/chunk-000/observation.images.${key}/episode_000000.mp4`,
-        content: blob,
-      });
+    // Add video blobs with proper paths (use container extension based on recorded mime)
+    if (
+      this.videoBlobsByEpisode &&
+      Object.keys(this.videoBlobsByEpisode).length > 0
+    ) {
+      const episodeIndices = Object.keys(this.videoBlobsByEpisode)
+        .map((s) => parseInt(s))
+        .sort((a, b) => a - b);
+      for (const epIdx of episodeIndices) {
+        const byCam = this.videoBlobsByEpisode[epIdx] || {};
+        for (const [key, blob] of Object.entries(byCam)) {
+          const ext = this.videoMimeByKey[key]?.ext || "webm";
+          const numpadded = epIdx.toString().padStart(6, "0");
+          blobArray.push({
+            path: `videos/chunk-000/observation.images.${key}/episode_${numpadded}.${ext}`,
+            content: blob,
+          });
+        }
+      }
+    } else {
+      for (const [key, blob] of Object.entries(videoBlobs)) {
+        const ext = this.videoMimeByKey[key]?.ext || "webm";
+        blobArray.push({
+          path: `videos/chunk-000/observation.images.${key}/episode_000000.${ext}`,
+          content: blob,
+        });
+      }
     }
 
     return blobArray;
@@ -1463,7 +1619,8 @@ export class LeRobotDatasetRecorder {
   async _exportForLeRobotHuggingface(
     username: string,
     repoName: string,
-    accessToken: string
+    accessToken: string,
+    privateRepo: boolean = false
   ) {
     // Create the blobs array for upload
     const blobArray = await this._exportForLeRobotBlobs();
@@ -1484,7 +1641,12 @@ export class LeRobotDatasetRecorder {
 
     try {
       // Start the upload process
-      uploader.createRepoAndUploadFiles(files, accessToken, referenceId);
+      uploader.createRepoAndUploadFiles(
+        files,
+        accessToken,
+        referenceId,
+        privateRepo
+      );
       console.log(`Successfully uploaded dataset to ${username}/${repoName}`);
       return uploader;
     } catch (error) {
@@ -1603,7 +1765,8 @@ export class LeRobotDatasetRecorder {
         return this._exportForLeRobotHuggingface(
           options.username,
           options.repoName,
-          options.accessToken
+          options.accessToken,
+          (options as any).privateRepo ?? false
         );
 
       case "s3":
@@ -1653,4 +1816,148 @@ export class LeRobotDatasetRecorder {
         return zipContent;
     }
   }
+}
+
+// Simple record() function API - wraps LeRobotDatasetRecorder
+import type {
+  RecordConfig,
+  RecordProcess,
+  RecordingState,
+  RecordingData,
+  RobotRecordingData,
+} from "./types/recording.js";
+
+/**
+ * Simple recording function that follows LeRobot.js conventions
+ *
+ * Records robot motor positions and teleoperation data using a clean function API
+ * that matches the patterns established by calibrate() and teleoperate().
+ *
+ * @param config Recording configuration with explicit teleoperator dependency
+ * @returns RecordProcess with start(), stop(), getState(), and result
+ *
+ * @example
+ * ```typescript
+ * // 1. Create teleoperation
+ * const teleoperationProcess = await teleoperate({
+ *   robot: connectedRobot,
+ *   teleop: { type: "keyboard" },
+ *   calibrationData: calibrationData,
+ * });
+ *
+ * // 2. Create recording with explicit teleoperator dependency
+ * const recordProcess = await record({
+ *   teleoperator: teleoperationProcess.teleoperator,
+ *   options: {
+ *     fps: 30,
+ *     taskDescription: "Pick and place task",
+ *     onDataUpdate: (data) => console.log(`Recorded ${data.frameCount} frames`),
+ *   }
+ * });
+ *
+ * // 3. Start both processes
+ * teleoperationProcess.start();
+ * recordProcess.start();
+ *
+ * // 4. Stop recording
+ * const robotData = await recordProcess.stop();
+ * ```
+ */
+export async function record(config: RecordConfig): Promise<RecordProcess> {
+  // Use the provided teleoperator (explicit dependency - good architecture!)
+  const recorder = new LeRobotDatasetRecorder(
+    [config.teleoperator], // Preserve excellent explicit dependency pattern
+    {}, // No video streams in simple API (move complex features to demo)
+    config.options?.fps || 30,
+    config.options?.taskDescription || "Robot recording"
+  );
+
+  let startTime = 0;
+  let resultPromise: Promise<RobotRecordingData> | null = null;
+  let stateUpdateInterval: NodeJS.Timeout | null = null;
+
+  const recordProcess: RecordProcess = {
+    start(): void {
+      startTime = Date.now();
+      recorder.startRecording();
+
+      // Set up state update polling for simple API callbacks
+      if (config.options?.onStateUpdate || config.options?.onDataUpdate) {
+        stateUpdateInterval = setInterval(() => {
+          if (recorder.isRecording) {
+            const state = recordProcess.getState();
+
+            if (config.options?.onStateUpdate) {
+              config.options.onStateUpdate(state);
+            }
+
+            if (config.options?.onDataUpdate) {
+              config.options.onDataUpdate({
+                frameCount: state.frameCount,
+                currentEpisode: state.episodeCount,
+                recentFrames: [], // Simplified for basic API
+              });
+            }
+          }
+        }, 100); // 10fps updates for UI responsiveness
+      }
+    },
+
+    async stop(): Promise<RobotRecordingData> {
+      if (stateUpdateInterval) {
+        clearInterval(stateUpdateInterval);
+        stateUpdateInterval = null;
+      }
+
+      const result = await recorder.stopRecording();
+
+      // Convert to simple API format (pure motor data, no video complexity)
+      const robotData: RobotRecordingData = {
+        episodes: recorder.episodes.map((episode) => episode.frames),
+        metadata: {
+          fps: config.options?.fps || 30,
+          robotType: "unknown", // Could extract from teleoperator if available
+          startTime: startTime,
+          endTime: Date.now(),
+          totalFrames: recorder.teleoperatorData.reduce(
+            (sum, ep) => sum + ep.length,
+            0
+          ),
+          totalEpisodes: recorder.teleoperatorData.length,
+        },
+      };
+
+      return robotData;
+    },
+
+    getState(): RecordingState {
+      return {
+        isActive: recorder.isRecording,
+        frameCount: recorder.teleoperatorData.reduce(
+          (sum, ep) => sum + ep.length,
+          0
+        ),
+        episodeCount: recorder.teleoperatorData.length,
+        duration: recorder.isRecording ? Date.now() - startTime : 0,
+        lastUpdate: Date.now(),
+      };
+    },
+
+    get result(): Promise<RobotRecordingData> {
+      if (!resultPromise) {
+        resultPromise = new Promise((resolve) => {
+          // Return promise that resolves when stop() is called
+          const originalStop = recordProcess.stop;
+          recordProcess.stop = async () => {
+            const data = await originalStop();
+            resolve(data);
+            return data;
+          };
+        });
+      }
+      return resultPromise;
+    },
+  };
+
+  return recordProcess;
 }
