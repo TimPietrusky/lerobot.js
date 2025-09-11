@@ -214,19 +214,18 @@ export function Recorder({
     }
 
     try {
-      // Set the episode index
-      recorderRef.current.setEpisodeIndex(currentEpisode);
-      recorderRef.current.setTaskIndex(0); // Default task index
+      // Default task index (episode index is auto-managed by recorder now)
+      recorderRef.current.setTaskIndex(0);
 
       // Start recording
       recorderRef.current.startRecording();
       setIsRecording(true);
       setHasRecordedFrames(true);
 
-      toast({
-        title: "Recording Started",
-        description: `Episode ${currentEpisode} is now recording`,
-      });
+      // Sync current episode to recorder's latest
+      setCurrentEpisode(
+        Math.max(0, (recorderRef.current.teleoperatorData.length || 1) - 1)
+      );
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Failed to start recording";
@@ -284,12 +283,7 @@ export function Recorder({
     setHasRecordedFrames(isRecording); // Keep true if recording, false if not
     setShowDeleteEpisodesDialog(false);
 
-    toast({
-      title: "Episodes Deleted",
-      description: isRecording
-        ? "All recorded episodes have been cleared. Recording continues with new episode 0."
-        : "All recorded episodes have been cleared.",
-    });
+    // No toast needed; dialog confirmation provides sufficient feedback
   };
 
   const handleNextEpisode = () => {
@@ -297,22 +291,13 @@ export function Recorder({
       return;
     }
 
-    // Finish current episode and start next one (within the same recording session)
-    // Increment episode counter
-    const nextEpisode = currentEpisode + 1;
-    setCurrentEpisode(nextEpisode);
-
-    // Set the new episode index on the recorder
-    recorderRef.current.setEpisodeIndex(nextEpisode);
-
-    // Create a new episode in the teleoperatorData array
-    // This is needed because currentEpisode always points to the last episode
-    (recorderRef.current as any).teleoperatorData.push(new LeRobotEpisode());
-
-    toast({
-      title: "Next Episode Started",
-      description: `Now recording episode ${nextEpisode}`,
-    });
+    // Finalize current video segment and start a new one; advances episode index
+    recorderRef.current
+      .nextEpisodeSegment()
+      .then((newIndex) => setCurrentEpisode(newIndex))
+      .catch(() => {
+        /* noop */
+      });
   };
 
   // Force lightweight UI refresh while recording so episode table updates in near real-time
@@ -792,10 +777,7 @@ export function Recorder({
       });
       return;
     }
-    toast({
-      title: "Download Started",
-      description: "Your dataset is being downloaded as a ZIP file",
-    });
+    // No toast; the browser download prompt is sufficient feedback
   };
 
   const handleUploadToHuggingFace = async () => {
@@ -811,11 +793,6 @@ export function Recorder({
     }
 
     try {
-      toast({
-        title: "Upload Started",
-        description: "Uploading dataset to Hugging Face...",
-      });
-
       // Use provided repo name or generate one
       const repoName =
         (recorderSettings.huggingfaceRepoName || "").trim() ||

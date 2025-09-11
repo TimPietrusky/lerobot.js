@@ -497,15 +497,22 @@ export class LeRobotDatasetRecorder {
 
     this._isRecording = true;
 
-    // add a new episode and mark current video segment episode index
+    // Always start a brand new episode using the next available index
+    this.episodeIndex = this.teleoperatorData.length;
     this.teleoperatorData.push(new LeRobotEpisode());
     this.currentVideoSegmentEpisodeIndex = this.episodeIndex;
 
     // Start recording video streams
     Object.entries(this.videoStreams).forEach(([key, stream]) => {
       // Pick a supported mime/container pair per browser
-      const { mime, ext } = LeRobotDatasetRecorder.getSupportedRecorderType();
+      const supported =
+        this.videoMimeByKey[key] ||
+        LeRobotDatasetRecorder.getSupportedRecorderType();
+      const { mime, ext } = supported;
       this.videoMimeByKey[key] = { mime, ext };
+
+      // Reset chunks for a clean segment start
+      this.videoChunks[key] = [];
       const mediaRecorder = new MediaRecorder(stream, { mimeType: mime });
 
       // Handle data available events
@@ -590,6 +597,8 @@ export class LeRobotDatasetRecorder {
               this.videoBlobsByEpisode[segmentEpisodeIndex] = {} as any;
             }
             this.videoBlobsByEpisode[segmentEpisodeIndex][key] = blob;
+            // Prepare for any subsequent recording
+            this.videoChunks[key] = [];
             resolve();
           };
 
@@ -608,11 +617,94 @@ export class LeRobotDatasetRecorder {
   }
 
   /**
+   * Finalizes the current video segment and immediately starts a new one
+   * while continuing the recording session. Also advances to the next
+   * episode and begins collecting frames under the new episode index.
+   *
+   * @returns The new episode index
+   */
+  async nextEpisodeSegment(): Promise<number> {
+    if (!this._isRecording) {
+      console.warn("nextEpisodeSegment() called while not recording");
+      // Ensure episode index points to last episode if any
+      this.episodeIndex = Math.max(0, this.teleoperatorData.length - 1);
+      return this.episodeIndex;
+    }
+
+    const oldSegmentEpisodeIndex =
+      this.currentVideoSegmentEpisodeIndex ?? this.episodeIndex;
+
+    // Stop current media recorders and persist the segment blobs under the old episode index
+    const stopPromises = Object.entries(this.mediaRecorders).map(
+      ([key, recorder]) => {
+        return new Promise<void>((resolve) => {
+          if (recorder.state === "inactive") {
+            resolve();
+            return;
+          }
+          recorder.onstop = () => {
+            const chunks = this.videoChunks[key] || [];
+            const mime = this.videoMimeByKey[key]?.mime || "video/webm";
+            const blob = new Blob(chunks, { type: mime });
+            if (!this.videoBlobsByEpisode[oldSegmentEpisodeIndex]) {
+              this.videoBlobsByEpisode[oldSegmentEpisodeIndex] = {} as any;
+            }
+            this.videoBlobsByEpisode[oldSegmentEpisodeIndex][key] = blob;
+            // Reset chunks for the next segment
+            this.videoChunks[key] = [];
+            resolve();
+          };
+          recorder.stop();
+        });
+      }
+    );
+
+    await Promise.all(stopPromises);
+
+    // Advance to the next episode
+    const newEpisodeIndex = this.teleoperatorData.length;
+    this.episodeIndex = newEpisodeIndex;
+    this.teleoperatorData.push(new LeRobotEpisode());
+
+    // Start new media recorders for the next segment
+    Object.entries(this.videoStreams).forEach(([key, stream]) => {
+      const supported =
+        this.videoMimeByKey[key] ||
+        LeRobotDatasetRecorder.getSupportedRecorderType();
+      const { mime, ext } = supported;
+      this.videoMimeByKey[key] = { mime, ext };
+
+      // Ensure a fresh chunk buffer
+      this.videoChunks[key] = [];
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: mime });
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          this.videoChunks[key].push(event.data);
+        }
+      };
+      this.mediaRecorders[key] = mediaRecorder;
+      mediaRecorder.start(1000);
+    });
+
+    // Point subsequent stop() to the new episode index
+    this.currentVideoSegmentEpisodeIndex = newEpisodeIndex;
+
+    return newEpisodeIndex;
+  }
+
+  /**
    * Clears the teleoperator data and video blobs
    */
   clearRecording() {
     this.teleoperatorData = [];
     this.videoBlobs = {};
+    this.videoBlobsByEpisode = {} as any;
+    // Reset video chunk buffers so future segments don't include cleared data
+    for (const key of Object.keys(this.videoChunks)) {
+      this.videoChunks[key] = [];
+    }
+    this.episodeIndex = 0;
+    this.currentVideoSegmentEpisodeIndex = null;
   }
 
   /**
