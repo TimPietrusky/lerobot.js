@@ -338,11 +338,15 @@ export class LeRobotDatasetRecorder {
   mediaRecorders: { [key: string]: MediaRecorder };
   videoChunks: { [key: string]: Blob[] };
   videoBlobs: { [key: string]: Blob };
+  private videoBlobsByEpisode: {
+    [episodeIndex: number]: { [key: string]: Blob };
+  };
   private videoMimeByKey: { [key: string]: { mime: string; ext: string } };
   teleoperatorData: LeRobotEpisode[];
   private _isRecording: boolean;
   private episodeIndex: number = 0;
   private taskIndex: number = 0;
+  private currentVideoSegmentEpisodeIndex: number | null = null;
   fps: number;
   taskDescription: string;
 
@@ -383,6 +387,7 @@ export class LeRobotDatasetRecorder {
     this.mediaRecorders = {};
     this.videoChunks = {};
     this.videoBlobs = {};
+    this.videoBlobsByEpisode = {};
     this.videoStreams = {};
     this.videoMimeByKey = {};
     this.teleoperatorData = [];
@@ -492,8 +497,9 @@ export class LeRobotDatasetRecorder {
 
     this._isRecording = true;
 
-    // add a new episode
+    // add a new episode and mark current video segment episode index
     this.teleoperatorData.push(new LeRobotEpisode());
+    this.currentVideoSegmentEpisodeIndex = this.episodeIndex;
 
     // Start recording video streams
     Object.entries(this.videoStreams).forEach(([key, stream]) => {
@@ -578,6 +584,12 @@ export class LeRobotDatasetRecorder {
             const mime = this.videoMimeByKey[key]?.mime || "video/webm";
             const blob = new Blob(chunks, { type: mime });
             this.videoBlobs[key] = blob;
+            const segmentEpisodeIndex =
+              this.currentVideoSegmentEpisodeIndex ?? this.episodeIndex;
+            if (!this.videoBlobsByEpisode[segmentEpisodeIndex]) {
+              this.videoBlobsByEpisode[segmentEpisodeIndex] = {} as any;
+            }
+            this.videoBlobsByEpisode[segmentEpisodeIndex][key] = blob;
             resolve();
           };
 
@@ -967,7 +979,12 @@ export class LeRobotDatasetRecorder {
     }
 
     // Create video info objects for each video stream
-    const videos_info: VideoInfo[] = Object.keys(this.videoBlobs).map((key) => {
+    const cameraKeySet = new Set<string>();
+    Object.keys(this.videoBlobs).forEach((k) => cameraKeySet.add(k));
+    Object.values(this.videoBlobsByEpisode || {}).forEach((byCam) =>
+      Object.keys(byCam || {}).forEach((k) => cameraKeySet.add(k))
+    );
+    const videos_info: VideoInfo[] = Array.from(cameraKeySet).map((key) => {
       // Default values - in a production environment, you would extract
       // these from the actual video metadata using the key to identify the video source
       console.log(`Generating metadata for video stream: ${key}`);
@@ -989,6 +1006,11 @@ export class LeRobotDatasetRecorder {
     let video_files_size_in_mb = 0;
     for (const blob of Object.values(this.videoBlobs)) {
       video_files_size_in_mb += blob.size / (1024 * 1024);
+    }
+    for (const byCam of Object.values(this.videoBlobsByEpisode || {})) {
+      for (const blob of Object.values(byCam || {})) {
+        video_files_size_in_mb += (blob as Blob).size / (1024 * 1024);
+      }
     }
     video_files_size_in_mb = Math.round(video_files_size_in_mb);
 
@@ -1012,8 +1034,13 @@ export class LeRobotDatasetRecorder {
    * @returns Statistics object for the LeRobot dataset
    */
   async getStatistics(data: any[]): Promise<any> {
-    // Get camera keys from the video blobs
-    const cameraKeys = Object.keys(this.videoBlobs);
+    // Get camera keys from any available blobs
+    const cameraKeySet2 = new Set<string>();
+    Object.keys(this.videoBlobs).forEach((k) => cameraKeySet2.add(k));
+    Object.values(this.videoBlobsByEpisode || {}).forEach((byCam) =>
+      Object.keys(byCam || {}).forEach((k) => cameraKeySet2.add(k))
+    );
+    const cameraKeys = Array.from(cameraKeySet2);
 
     // Generate stats using the data and camera keys
     return getStats(data, cameraKeys);
@@ -1426,12 +1453,32 @@ export class LeRobotDatasetRecorder {
     ];
 
     // Add video blobs with proper paths (use container extension based on recorded mime)
-    for (const [key, blob] of Object.entries(videoBlobs)) {
-      const ext = this.videoMimeByKey[key]?.ext || "webm";
-      blobArray.push({
-        path: `videos/chunk-000/observation.images.${key}/episode_000000.${ext}`,
-        content: blob,
-      });
+    if (
+      this.videoBlobsByEpisode &&
+      Object.keys(this.videoBlobsByEpisode).length > 0
+    ) {
+      const episodeIndices = Object.keys(this.videoBlobsByEpisode)
+        .map((s) => parseInt(s))
+        .sort((a, b) => a - b);
+      for (const epIdx of episodeIndices) {
+        const byCam = this.videoBlobsByEpisode[epIdx] || {};
+        for (const [key, blob] of Object.entries(byCam)) {
+          const ext = this.videoMimeByKey[key]?.ext || "webm";
+          const numpadded = epIdx.toString().padStart(6, "0");
+          blobArray.push({
+            path: `videos/chunk-000/observation.images.${key}/episode_${numpadded}.${ext}`,
+            content: blob,
+          });
+        }
+      }
+    } else {
+      for (const [key, blob] of Object.entries(videoBlobs)) {
+        const ext = this.videoMimeByKey[key]?.ext || "webm";
+        blobArray.push({
+          path: `videos/chunk-000/observation.images.${key}/episode_000000.${ext}`,
+          content: blob,
+        });
+      }
     }
 
     return blobArray;
@@ -1480,7 +1527,8 @@ export class LeRobotDatasetRecorder {
   async _exportForLeRobotHuggingface(
     username: string,
     repoName: string,
-    accessToken: string
+    accessToken: string,
+    privateRepo: boolean = false
   ) {
     // Create the blobs array for upload
     const blobArray = await this._exportForLeRobotBlobs();
@@ -1501,7 +1549,12 @@ export class LeRobotDatasetRecorder {
 
     try {
       // Start the upload process
-      uploader.createRepoAndUploadFiles(files, accessToken, referenceId);
+      uploader.createRepoAndUploadFiles(
+        files,
+        accessToken,
+        referenceId,
+        privateRepo
+      );
       console.log(`Successfully uploaded dataset to ${username}/${repoName}`);
       return uploader;
     } catch (error) {
@@ -1620,7 +1673,8 @@ export class LeRobotDatasetRecorder {
         return this._exportForLeRobotHuggingface(
           options.username,
           options.repoName,
-          options.accessToken
+          options.accessToken,
+          (options as any).privateRepo ?? false
         );
 
       case "s3":

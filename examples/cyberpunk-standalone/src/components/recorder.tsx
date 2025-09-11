@@ -54,6 +54,8 @@ interface RecorderProps {
 
 interface RecorderSettings {
   huggingfaceApiKey: string;
+  huggingfaceRepoName?: string;
+  huggingfacePrivate?: boolean;
   cameraConfigs: {
     [cameraName: string]: {
       deviceId: string;
@@ -76,6 +78,8 @@ function getRecorderSettings(): RecorderSettings {
   }
   return {
     huggingfaceApiKey: "",
+    huggingfaceRepoName: "",
+    huggingfacePrivate: true,
     cameraConfigs: {},
   };
 }
@@ -127,6 +131,9 @@ export function Recorder({
   const [sourceSelectorOpenFor, setSourceSelectorOpenFor] = useState<
     string | null
   >(null);
+  const [uploadState, setUploadState] = useState<
+    { status: "idle" } | { status: "uploading" } | { status: "done" }
+  >({ status: "idle" });
 
   const recorderRef = useRef<LeRobotDatasetRecorder | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -809,20 +816,33 @@ export function Recorder({
         description: "Uploading dataset to Hugging Face...",
       });
 
-      // Generate a unique repository name
-      const repoName = `lerobot-recording-${Date.now()}`;
+      // Use provided repo name or generate one
+      const repoName =
+        (recorderSettings.huggingfaceRepoName || "").trim() ||
+        `lerobot-recording-${Date.now()}`;
 
       const uploader = await recorderRef.current.exportForLeRobot(
         "huggingface",
         {
           repoName,
           accessToken: recorderSettings.huggingfaceApiKey,
+          // @ts-expect-error: library supports privateRepo via options passthrough
+          privateRepo: !!recorderSettings.huggingfacePrivate,
         }
       );
 
-      uploader.addEventListener("progress", (event: Event) => {
-        console.log(event);
-      });
+      // Progress UI next to button
+      setUploadState({ status: "uploading" });
+      const onProgress = (_event: Event) => {
+        // Spinner-only UI; keep uploading state
+        setUploadState({ status: "uploading" });
+      };
+      const onFinished = () => setUploadState({ status: "done" });
+      const onError = () => setUploadState({ status: "idle" });
+      uploader.addEventListener("progress", onProgress);
+      uploader.addEventListener("finished", onFinished);
+      uploader.addEventListener("error", onError);
+      // No fake progress; spinner indicates activity
     } catch (error) {
       const errorMessage =
         error instanceof Error
@@ -866,6 +886,40 @@ export function Recorder({
                 <p className="text-xs text-white/50">
                   Required to upload datasets to Hugging Face Hub
                 </p>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm text-muted-foreground">
+                  Hugging Face Repo Name
+                </label>
+                <Input
+                  placeholder="e.g. my-dataset-name"
+                  value={recorderSettings.huggingfaceRepoName || ""}
+                  onChange={(e) => {
+                    const newSettings = {
+                      ...recorderSettings,
+                      huggingfaceRepoName: e.target.value,
+                    };
+                    setRecorderSettings(newSettings);
+                    saveRecorderSettings(newSettings);
+                  }}
+                  className="bg-black/20 border-white/10"
+                />
+                <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    className="accent-white"
+                    checked={!!recorderSettings.huggingfacePrivate}
+                    onChange={(e) => {
+                      const newSettings = {
+                        ...recorderSettings,
+                        huggingfacePrivate: e.target.checked,
+                      };
+                      setRecorderSettings(newSettings);
+                      saveRecorderSettings(newSettings);
+                    }}
+                  />
+                  Private repository
+                </label>
               </div>
             </div>
           </div>
@@ -1223,16 +1277,26 @@ export function Recorder({
           </Button>
           <Button
             variant="outline"
-            className="gap-2"
+            className="gap-2 relative"
             onClick={handleUploadToHuggingFace}
             disabled={
               recorderRef.current?.teleoperatorData.length === 0 ||
               isRecording ||
-              !recorderSettings.huggingfaceApiKey
+              !recorderSettings.huggingfaceApiKey ||
+              uploadState.status === "uploading"
             }
           >
             <Upload className="w-4 h-4" />
-            Upload to Hugging Face
+            {uploadState.status === "uploading" ? (
+              <span className="inline-flex items-center gap-2">
+                Uploading…
+                <span className="inline-block w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin" />
+              </span>
+            ) : uploadState.status === "done" ? (
+              <span>Uploaded ✓</span>
+            ) : (
+              <span>Upload to Hugging Face</span>
+            )}
           </Button>
         </div>
       </div>
