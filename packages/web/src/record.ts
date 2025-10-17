@@ -3,9 +3,6 @@ import { MotorConfig } from "./types/teleoperation";
 import * as parquet from "parquet-wasm";
 import * as arrow from "apache-arrow";
 import JSZip from "jszip";
-import getMetadataInfo from "./utils/record/metadataInfo";
-import type { VideoInfo } from "./utils/record/metadataInfo";
-import getStats from "./utils/record/stats";
 import generateREADME from "./utils/record/generateREADME";
 import { LeRobotHFUploader } from "./hf_uploader";
 import { LeRobotS3Uploader } from "./s3_uploader";
@@ -349,6 +346,7 @@ export class LeRobotDatasetRecorder {
   private currentVideoSegmentEpisodeIndex: number | null = null;
   fps: number;
   taskDescription: string;
+  private robotLabel?: string;
 
   /**
    * Ensures BlobPart compatibility across environments by converting Uint8Array
@@ -394,19 +392,25 @@ export class LeRobotDatasetRecorder {
     this._isRecording = false;
     this.fps = fps;
     this.taskDescription = taskDescription;
+    this.robotLabel = undefined;
 
     for (const [key, stream] of Object.entries(videoStreams)) {
       this.addVideoStream(key, stream);
     }
   }
 
+  setRobotLabel(label: string) {
+    this.robotLabel = label;
+  }
+
   private static getSupportedRecorderType(): { mime: string; ext: string } {
+    // Prefer H.264 MP4 for viewer compatibility; fall back to WebM
     const candidates: { mime: string; ext: string }[] = [
+      { mime: "video/mp4;codecs=h264", ext: "mp4" },
+      { mime: "video/mp4", ext: "mp4" },
       { mime: "video/webm;codecs=vp9", ext: "webm" },
       { mime: "video/webm;codecs=vp8", ext: "webm" },
       { mime: "video/webm", ext: "webm" },
-      { mime: "video/mp4;codecs=h264", ext: "mp4" },
-      { mime: "video/mp4", ext: "mp4" },
     ];
     for (const c of candidates) {
       if (
@@ -1059,83 +1063,17 @@ export class LeRobotDatasetRecorder {
    * Generates metadata for the dataset
    * @returns Metadata object for the LeRobot dataset
    */
-  async generateMetadata(data: any[]): Promise<any> {
-    // Calculate total episodes, frames, and tasks
-    let total_episodes = 0;
-    const total_frames = data.length;
-    let total_tasks = 0;
-
-    for (const row of data) {
-      total_episodes = Math.max(total_episodes, row.episode_index);
-      total_tasks = Math.max(total_tasks, row.task_index);
-    }
-
-    // Create video info objects for each video stream
-    const cameraKeySet = new Set<string>();
-    Object.keys(this.videoBlobs).forEach((k) => cameraKeySet.add(k));
-    Object.values(this.videoBlobsByEpisode || {}).forEach((byCam) =>
-      Object.keys(byCam || {}).forEach((k) => cameraKeySet.add(k))
-    );
-    const videos_info: VideoInfo[] = Array.from(cameraKeySet).map((key) => {
-      // Default values - in a production environment, you would extract
-      // these from the actual video metadata using the key to identify the video source
-      console.log(`Generating metadata for video stream: ${key}`);
-      return {
-        height: 480,
-        width: 640,
-        channels: 3,
-        codec: "h264",
-        pix_fmt: "yuv420p",
-        is_depth_map: false,
-        has_audio: false,
-      };
-    });
-
-    // Calculate approximate file sizes in MB
-    const data_files_size_in_mb = Math.round(data.length * 0.001); // Estimate
-
-    // Calculate video size by summing the sizes of all video blobs and converting to MB
-    let video_files_size_in_mb = 0;
-    for (const blob of Object.values(this.videoBlobs)) {
-      video_files_size_in_mb += blob.size / (1024 * 1024);
-    }
-    for (const byCam of Object.values(this.videoBlobsByEpisode || {})) {
-      for (const blob of Object.values(byCam || {})) {
-        video_files_size_in_mb += (blob as Blob).size / (1024 * 1024);
-      }
-    }
-    video_files_size_in_mb = Math.round(video_files_size_in_mb);
-
-    // Generate and return the metadata
-    return getMetadataInfo({
-      total_episodes,
-      total_frames,
-      total_tasks,
-      chunks_size: 1000, // Default chunk size
-      fps: this.fps,
-      splits: { train: `0:${total_episodes}` }, // All episodes in train split
-      features: {}, // Additional features can be added here
-      videos_info,
-      data_files_size_in_mb,
-      video_files_size_in_mb,
-    });
+  // Deprecated for v2.1 exporter; left for backwards-compat APIs
+  async generateMetadata(_data: any[]): Promise<any> {
+    return {};
   }
 
   /**
    * Generates statistics for the dataset
    * @returns Statistics object for the LeRobot dataset
    */
-  async getStatistics(data: any[]): Promise<any> {
-    // Get camera keys from any available blobs
-    const cameraKeySet2 = new Set<string>();
-    Object.keys(this.videoBlobs).forEach((k) => cameraKeySet2.add(k));
-    Object.values(this.videoBlobsByEpisode || {}).forEach((byCam) =>
-      Object.keys(byCam || {}).forEach((k) => cameraKeySet2.add(k))
-    );
-    const cameraKeys = Array.from(cameraKeySet2);
-
-    // Generate stats using the data and camera keys
-    return getStats(data, cameraKeys);
+  async getStatistics(_data: any[]): Promise<any> {
+    return {};
   }
 
   /**
@@ -1192,299 +1130,8 @@ export class LeRobotDatasetRecorder {
    * Creates the episodes statistics parquet file
    * @returns A Uint8Array blob containing the parquet data
    */
-  async getEpisodeStatistics(data: any[]): Promise<Uint8Array> {
-    const { vectorFromArray } = arrow;
-    const statistics = await this.getStatistics(data);
-
-    // Calculate total episodes and frames
-    let total_episodes = 0;
-
-    for (let row of data) {
-      total_episodes = Math.max(total_episodes, row.episode_index);
-    }
-
-    total_episodes += 1; // +1 since episodes start from 0
-
-    const episodes: any[] = [];
-
-    // we'll create one row per episode
-    for (
-      let episode_index = 0;
-      episode_index < total_episodes;
-      episode_index++
-    ) {
-      // Get data for this episode only
-      const episodeData = data.filter(
-        (row) => row.episode_index === episode_index
-      );
-
-      // Extract timestamps for this episode
-      const timestamps = episodeData.map((row) => row.timestamp);
-      let min_timestamp = Infinity;
-      let max_timestamp = -Infinity;
-
-      for (let timestamp of timestamps) {
-        min_timestamp = Math.min(min_timestamp, timestamp);
-        max_timestamp = Math.max(max_timestamp, timestamp);
-      }
-
-      // Camera keys from video blobs
-      const cameraKeys = Object.keys(this.videoBlobs);
-
-      // Create entry for this episode
-      const episodeEntry: any = {
-        // Basic episode information
-        episode_index: episode_index,
-        "data/chunk_index": 0,
-        "data/file_index": 0,
-        dataset_from_index: 0,
-        dataset_to_index: episodeData.length - 1,
-        length: episodeData.length,
-        tasks: [0], // Task index 0, could be extended for multiple tasks
-
-        // Meta information
-        "meta/episodes/chunk_index": 0,
-        "meta/episodes/file_index": 0,
-      };
-
-      // Add video information for each camera
-      cameraKeys.forEach((key) => {
-        episodeEntry[`videos/observation.images.${key}/chunk_index`] = 0;
-        episodeEntry[`videos/observation.images.${key}/file_index`] = 0;
-        episodeEntry[`videos/observation.images.${key}/from_timestamp`] =
-          min_timestamp;
-        episodeEntry[`videos/observation.images.${key}/to_timestamp`] =
-          max_timestamp;
-      });
-
-      // Add statistics for each field
-      // This is a simplified approach - in a real implementation, you'd calculate
-      // these values for each episode individually
-
-      // Add timestamp statistics
-      episodeEntry["stats/timestamp/min"] = [statistics.timestamp.min];
-      episodeEntry["stats/timestamp/max"] = [statistics.timestamp.max];
-      episodeEntry["stats/timestamp/mean"] = [statistics.timestamp.mean];
-      episodeEntry["stats/timestamp/std"] = [statistics.timestamp.std];
-      episodeEntry["stats/timestamp/count"] = [statistics.timestamp.count];
-
-      // Add frame_index statistics
-      episodeEntry["stats/frame_index/min"] = [statistics.frame_index.min];
-      episodeEntry["stats/frame_index/max"] = [statistics.frame_index.max];
-      episodeEntry["stats/frame_index/mean"] = [statistics.frame_index.mean];
-      episodeEntry["stats/frame_index/std"] = [statistics.frame_index.std];
-      episodeEntry["stats/frame_index/count"] = [statistics.frame_index.count];
-
-      // Add episode_index statistics
-      episodeEntry["stats/episode_index/min"] = [statistics.episode_index.min];
-      episodeEntry["stats/episode_index/max"] = [statistics.episode_index.max];
-      episodeEntry["stats/episode_index/mean"] = [
-        statistics.episode_index.mean,
-      ];
-      episodeEntry["stats/episode_index/std"] = [statistics.episode_index.std];
-      episodeEntry["stats/episode_index/count"] = [
-        statistics.episode_index.count,
-      ];
-
-      // Add task_index statistics
-      episodeEntry["stats/task_index/min"] = [statistics.task_index.min];
-      episodeEntry["stats/task_index/max"] = [statistics.task_index.max];
-      episodeEntry["stats/task_index/mean"] = [statistics.task_index.mean];
-      episodeEntry["stats/task_index/std"] = [statistics.task_index.std];
-      episodeEntry["stats/task_index/count"] = [statistics.task_index.count];
-
-      // Add index statistics
-      episodeEntry["stats/index/min"] = [0];
-      episodeEntry["stats/index/max"] = [episodeData.length - 1];
-      episodeEntry["stats/index/mean"] = [episodeData.length / 2];
-      episodeEntry["stats/index/std"] = [episodeData.length / 4]; // Approximate std
-      episodeEntry["stats/index/count"] = [episodeData.length];
-
-      // Add action statistics (placeholder)
-      episodeEntry["stats/action/min"] = [0.0];
-      episodeEntry["stats/action/max"] = [1.0];
-      episodeEntry["stats/action/mean"] = [0.5];
-      episodeEntry["stats/action/std"] = [0.2];
-      episodeEntry["stats/action/count"] = [episodeData.length];
-
-      // Add observation.state statistics (placeholder)
-      episodeEntry["stats/observation.state/min"] = [0.0];
-      episodeEntry["stats/observation.state/max"] = [1.0];
-      episodeEntry["stats/observation.state/mean"] = [0.5];
-      episodeEntry["stats/observation.state/std"] = [0.2];
-      episodeEntry["stats/observation.state/count"] = [episodeData.length];
-
-      // Add observation.images statistics for each camera
-      cameraKeys.forEach((key) => {
-        // Get the image statistics from the overall statistics
-        const imageStats = statistics[`observation.images.${key}`] || {
-          min: [[[0.0]], [[0.0]], [[0.0]]],
-          max: [[[255.0]], [[255.0]], [[255.0]]],
-          mean: [[[127.5]], [[127.5]], [[127.5]]],
-          std: [[[50.0]], [[50.0]], [[50.0]]],
-          count: [[[episodeData.length * 3]]],
-        };
-
-        episodeEntry[`stats/observation.images.${key}/min`] = imageStats.min;
-        episodeEntry[`stats/observation.images.${key}/max`] = imageStats.max;
-        episodeEntry[`stats/observation.images.${key}/mean`] = imageStats.mean;
-        episodeEntry[`stats/observation.images.${key}/std`] = imageStats.std;
-        episodeEntry[`stats/observation.images.${key}/count`] =
-          imageStats.count;
-      });
-
-      episodes.push(episodeEntry);
-    }
-
-    // Create vector arrays for each column
-    const columns: any = {};
-
-    // Define column names and default types
-    const columnNames = [
-      "episode_index",
-      "data/chunk_index",
-      "data/file_index",
-      "dataset_from_index",
-      "dataset_to_index",
-      "length",
-      "meta/episodes/chunk_index",
-      "meta/episodes/file_index",
-      "tasks",
-    ];
-
-    // Add camera-specific columns
-    const cameraKeys = Object.keys(this.videoBlobs);
-    cameraKeys.forEach((key) => {
-      columnNames.push(
-        `videos/observation.images.${key}/chunk_index`,
-        `videos/observation.images.${key}/file_index`,
-        `videos/observation.images.${key}/from_timestamp`,
-        `videos/observation.images.${key}/to_timestamp`
-      );
-    });
-
-    // Add statistic columns for each field
-    const statFields = [
-      "timestamp",
-      "frame_index",
-      "episode_index",
-      "task_index",
-      "index",
-      "action",
-      "observation.state",
-    ];
-    statFields.forEach((field) => {
-      columnNames.push(
-        `stats/${field}/min`,
-        `stats/${field}/max`,
-        `stats/${field}/mean`,
-        `stats/${field}/std`,
-        `stats/${field}/count`
-      );
-    });
-
-    // Add image statistic columns for each camera
-    cameraKeys.forEach((key) => {
-      columnNames.push(
-        `stats/observation.images.${key}/min`,
-        `stats/observation.images.${key}/max`,
-        `stats/observation.images.${key}/mean`,
-        `stats/observation.images.${key}/std`,
-        `stats/observation.images.${key}/count`
-      );
-    });
-
-    // Create vector arrays for each column
-    columnNames.forEach((columnName) => {
-      const values = episodes.map((ep) => ep[columnName] || 0);
-
-      // Check if the column is an array type and needs special handling
-      if (columnName.includes("stats/") || columnName === "tasks") {
-        // Handle different types of array columns based on their naming pattern
-        if (columnName.includes("/count")) {
-          // Bigint arrays for count fields
-          // @ts-ignore
-          columns[columnName] = vectorFromArray(
-            values.map((v) => Number(v)),
-            new arrow.List(new arrow.Field("item", new arrow.Int64()))
-          );
-        } else if (
-          columnName.includes("/min") ||
-          columnName.includes("/max") ||
-          columnName.includes("/mean") ||
-          columnName.includes("/std")
-        ) {
-          // Double arrays for min, max, mean, std fields
-          if (
-            columnName.includes("observation.images") &&
-            (columnName.includes("/min") ||
-              columnName.includes("/max") ||
-              columnName.includes("/mean") ||
-              columnName.includes("/std"))
-          ) {
-            // These are 3D arrays [[[value]]]
-            // For 3D arrays, we need nested Lists
-            // @ts-ignore
-            columns[columnName] = vectorFromArray(
-              values,
-              new arrow.List(
-                new arrow.Field(
-                  "item",
-                  new arrow.List(
-                    new arrow.Field(
-                      "subitem",
-                      new arrow.List(
-                        new arrow.Field("value", new arrow.Float64())
-                      )
-                    )
-                  )
-                )
-              )
-            );
-          } else {
-            // These are normal arrays [value]
-            // @ts-ignore
-            columns[columnName] = vectorFromArray(
-              values,
-              new arrow.List(new arrow.Field("item", new arrow.Float64()))
-            );
-          }
-        } else {
-          // Default to Float64 List for other array types
-          // @ts-ignore
-          columns[columnName] = vectorFromArray(
-            values,
-            new arrow.List(new arrow.Field("item", new arrow.Float64()))
-          );
-        }
-      } else {
-        // For non-array columns, use regular vectorFromArray
-        // @ts-ignore
-        columns[columnName] = vectorFromArray(values);
-      }
-    });
-
-    // Create the table with all columns
-    const table = arrow.tableFromArrays(columns);
-
-    // Initialize the WASM module
-    const wasmUrl =
-      "https://cdn.jsdelivr.net/npm/parquet-wasm@0.6.1/esm/parquet_wasm_bg.wasm";
-    const initWasm = parquet.default;
-    await initWasm(wasmUrl);
-
-    // Convert Arrow table to Parquet WASM table
-    const wasmTable = parquet.Table.fromIPCStream(
-      arrow.tableToIPC(table, "stream")
-    );
-
-    // Set compression properties
-    const writerProperties = new parquet.WriterPropertiesBuilder()
-      .setCompression(parquet.Compression.UNCOMPRESSED)
-      .build();
-
-    // Write the Parquet file
-    return parquet.writeParquet(wasmTable, writerProperties);
+  async getEpisodeStatistics(_data: any[]): Promise<Uint8Array> {
+    return new Uint8Array();
   }
 
   generateREADME(metaInfo: string) {
@@ -1498,80 +1145,236 @@ export class LeRobotDatasetRecorder {
    * @private
    */
   async _exportForLeRobotBlobs() {
-    const teleoperatorDataJson = (await this.exportEpisodes("json")) as any[];
-    const parquetEpisodeDataFiles = await this._exportEpisodesToBlob(
-      teleoperatorDataJson
-    );
-    const videoBlobs = await this.exportMediaData();
-    const metadata = await this.generateMetadata(teleoperatorDataJson);
-    const statistics = await this.getStatistics(teleoperatorDataJson);
-    const tasksParquet = await this.createTasksParquet();
-    const episodesParquet = await this.getEpisodeStatistics(
-      teleoperatorDataJson
-    );
-    const readme = this.generateREADME(JSON.stringify(metadata));
+    const regularizedEpisodes = (await this.exportEpisodes("json")) as any[];
 
-    // Create the blob array with proper paths
-    const blobArray = [
-      ...parquetEpisodeDataFiles,
+    // Build episodes parquet files under data/chunk-000/episode_<id>.parquet
+    const parquetEpisodeDataFiles = await this._exportEpisodesToBlob(
+      regularizedEpisodes
+    );
+
+    // Rewrite parquet file paths to v2.1 layout with chunk folder
+    const rewrittenParquet = parquetEpisodeDataFiles.map((file, idx) => {
+      return {
+        path: `data/chunk-000/episode_${idx
+          .toString()
+          .padStart(6, "0")}.parquet`,
+        content: file.content,
+      };
+    });
+
+    // Videos: videos/chunk-000/observation.images.<camera>/episode_<id>.<ext>
+    const blobArray: { path: string; content: Blob }[] = [...rewrittenParquet];
+
+    const allEpisodeIndices = regularizedEpisodes.map((_: any, i: number) => i);
+    const cameraKeySet = new Set<string>();
+    const episodesVideoMap: { [ep: number]: { [cam: string]: string } } = {};
+
+    for (const epIdx of allEpisodeIndices) {
+      const byCam = this.videoBlobsByEpisode[epIdx] || {};
+      episodesVideoMap[epIdx] = {};
+      for (const [key, blob] of Object.entries(byCam)) {
+        const ext = this.videoMimeByKey[key]?.ext || "mp4";
+        const episodeId = epIdx.toString().padStart(6, "0");
+        const path = `videos/chunk-000/observation.images.${key}/episode_${episodeId}.${ext}`;
+        cameraKeySet.add(key);
+        episodesVideoMap[epIdx][key] = path;
+        blobArray.push({ path, content: blob });
+      }
+    }
+
+    // info.json (v2.1)
+    const cameras = Array.from(cameraKeySet);
+    const numEpisodes = regularizedEpisodes.length;
+    const totalFrames = regularizedEpisodes.reduce(
+      (sum: number, ep: any) => sum + ep.frames.length,
+      0
+    );
+    // Determine a default video extension for video_path pattern
+    let defaultVideoExt = "mp4";
+    if (cameras.length > 0) {
+      const firstKey = cameras[0];
+      const ext = this.videoMimeByKey[firstKey]?.ext;
+      if (ext) defaultVideoExt = ext;
+    }
+
+    // Build features object
+    const features: Record<string, any> = {
+      action: {
+        dtype: "float32",
+        shape: [6],
+        names: [
+          "main_shoulder_pan",
+          "main_shoulder_lift",
+          "main_elbow_flex",
+          "main_wrist_flex",
+          "main_wrist_roll",
+          "main_gripper",
+        ],
+      },
+      "observation.state": {
+        dtype: "float32",
+        shape: [6],
+        names: [
+          "main_shoulder_pan",
+          "main_shoulder_lift",
+          "main_elbow_flex",
+          "main_wrist_flex",
+          "main_wrist_roll",
+          "main_gripper",
+        ],
+      },
+      timestamp: { dtype: "float32", shape: [1], names: null },
+      frame_index: { dtype: "int64", shape: [1], names: null },
+      episode_index: { dtype: "int64", shape: [1], names: null },
+      index: { dtype: "int64", shape: [1], names: null },
+      task_index: { dtype: "int64", shape: [1], names: null },
+    };
+    for (const cam of cameras) {
+      // Map mime to codec
+      const mime = this.videoMimeByKey[cam]?.mime || "video/mp4";
+      let codec = "avc1";
+      if (mime.includes("vp9")) codec = "vp9";
+      else if (mime.includes("vp8")) codec = "vp8";
+      features[`observation.images.${cam}`] = {
+        dtype: "video",
+        shape: [480, 640, 3],
+        names: ["height", "width", "channels"],
+        info: {
+          "video.fps": this.fps,
+          "video.height": 480,
+          "video.width": 640,
+          "video.channels": 3,
+          "video.codec": codec,
+          "video.pix_fmt": "yuv420p",
+          "video.is_depth_map": false,
+          has_audio: false,
+        },
+      };
+    }
+
+    const infoJson = {
+      version: "2.1",
+      // Compatibility fields consumed by visualizers
+      total_episodes: numEpisodes,
+      total_frames: totalFrames,
+      fps: this.fps,
+      data_path:
+        "data/chunk-{episode_chunk:03d}/episode_{episode_index:06d}.parquet",
+      video_path: `videos/chunk-{episode_chunk:03d}/{video_key}/episode_{episode_index:06d}.${defaultVideoExt}`,
+      features,
+      // Extra descriptive fields
+      name: `lerobot_dataset_${new Date().toISOString().slice(0, 10)}`,
+      robot: this.robotLabel || "unknown",
+      cameras,
+      action_space: "joint_position",
+      frame_rate: this.fps,
+      num_episodes: numEpisodes,
+      created_by: "lerobot.js",
+      created_at: new Date().toISOString(),
+    } as any;
+
+    // episodes.jsonl
+    const episodesJsonlLines: string[] = [];
+    for (let epIdx = 0; epIdx < numEpisodes; epIdx++) {
+      const episodeId = epIdx.toString().padStart(6, "0");
+      const length = regularizedEpisodes[epIdx]?.frames.length || 0;
+      const videos: any = {};
+      Object.entries(episodesVideoMap[epIdx] || {}).forEach(([cam, path]) => {
+        videos[cam] = path;
+      });
+      const row = {
+        episode_id: episodeId,
+        task: this.taskDescription || "default",
+        length,
+        videos,
+      };
+      episodesJsonlLines.push(JSON.stringify(row));
+    }
+
+    // tasks.jsonl (single task)
+    const tasksJsonl = JSON.stringify({
+      task: this.taskDescription || "default",
+      description: this.taskDescription || "default",
+    });
+
+    // stats.json (minimal)
+    const lengths = regularizedEpisodes.map((ep: any) => ep.frames.length);
+    const epMin = lengths.length ? Math.min(...lengths) : 0;
+    const epMax = lengths.length ? Math.max(...lengths) : 0;
+    const epMean = lengths.length
+      ? lengths.reduce((a, b) => a + b, 0) / lengths.length
+      : 0;
+    const statsJson = {
+      total_frames: totalFrames,
+      episode_lengths: { min: epMin, max: epMax, mean: Math.round(epMean) },
+    } as any;
+
+    const readme = this.generateREADME(JSON.stringify(infoJson));
+
+    blobArray.push(
       {
         path: "meta/info.json",
-        content: new Blob([JSON.stringify(metadata, null, 2)], {
+        content: new Blob([JSON.stringify(infoJson, null, 2)], {
           type: "application/json",
+        }),
+      },
+      {
+        path: "meta/episodes.jsonl",
+        content: new Blob([episodesJsonlLines.join("\n") + "\n"], {
+          type: "application/jsonlines",
+        }),
+      },
+      {
+        path: "meta/tasks.jsonl",
+        content: new Blob([tasksJsonl + "\n"], {
+          type: "application/jsonlines",
         }),
       },
       {
         path: "meta/stats.json",
-        content: new Blob([JSON.stringify(statistics, null, 2)], {
+        content: new Blob([JSON.stringify(statsJson, null, 2)], {
           type: "application/json",
         }),
       },
       {
-        path: "meta/tasks.parquet",
-        content: new Blob([
-          LeRobotDatasetRecorder.toArrayBuffer(tasksParquet as Uint8Array),
-        ]),
-      },
-      {
-        path: "meta/episodes/chunk-000/file-000.parquet",
-        content: new Blob([
-          LeRobotDatasetRecorder.toArrayBuffer(episodesParquet as Uint8Array),
-        ]),
-      },
-      {
         path: "README.md",
         content: new Blob([readme], { type: "text/markdown" }),
-      },
-    ];
+      }
+    );
 
-    // Add video blobs with proper paths (use container extension based on recorded mime)
-    if (
-      this.videoBlobsByEpisode &&
-      Object.keys(this.videoBlobsByEpisode).length > 0
-    ) {
-      const episodeIndices = Object.keys(this.videoBlobsByEpisode)
-        .map((s) => parseInt(s))
-        .sort((a, b) => a - b);
-      for (const epIdx of episodeIndices) {
-        const byCam = this.videoBlobsByEpisode[epIdx] || {};
-        for (const [key, blob] of Object.entries(byCam)) {
-          const ext = this.videoMimeByKey[key]?.ext || "webm";
-          const numpadded = epIdx.toString().padStart(6, "0");
-          blobArray.push({
-            path: `videos/chunk-000/observation.images.${key}/episode_${numpadded}.${ext}`,
-            content: blob,
-          });
-        }
+    // episodes_stats.jsonl (v2.1)
+    const episodesStatsLines: string[] = [];
+    for (let epIdx = 0; epIdx < numEpisodes; epIdx++) {
+      const episodeId = epIdx.toString().padStart(6, "0");
+      const length = regularizedEpisodes[epIdx]?.frames.length || 0;
+      const timestamps = (regularizedEpisodes[epIdx]?.frames || []).map(
+        (f: any) => f.timestamp
+      );
+      const fromTs = timestamps.length ? Math.min(...timestamps) : 0;
+      const toTs = timestamps.length ? Math.max(...timestamps) : 0;
+
+      const row: any = {
+        episode_id: episodeId,
+        "data/chunk_index": 0,
+        "data/file": `data/chunk-000/episode_${episodeId}.parquet`,
+        length,
+      };
+      // add per-camera video fields
+      const map = episodesVideoMap[epIdx] || {};
+      for (const [cam, path] of Object.entries(map)) {
+        row[`videos/observation.images.${cam}/chunk_index`] = 0;
+        row[`videos/observation.images.${cam}/file`] = path;
+        row[`videos/observation.images.${cam}/from_timestamp`] = fromTs;
+        row[`videos/observation.images.${cam}/to_timestamp`] = toTs;
       }
-    } else {
-      for (const [key, blob] of Object.entries(videoBlobs)) {
-        const ext = this.videoMimeByKey[key]?.ext || "webm";
-        blobArray.push({
-          path: `videos/chunk-000/observation.images.${key}/episode_000000.${ext}`,
-          content: blob,
-        });
-      }
+      episodesStatsLines.push(JSON.stringify(row));
     }
+    blobArray.push({
+      path: "meta/episodes_stats.jsonl",
+      content: new Blob([episodesStatsLines.join("\n") + "\n"], {
+        type: "application/jsonlines",
+      }),
+    });
 
     return blobArray;
   }
@@ -1639,20 +1442,47 @@ export class LeRobotDatasetRecorder {
     // Generate a unique reference ID for tracking the upload
     const referenceId = `lerobot-upload-${Date.now()}`;
 
-    try {
-      // Start the upload process
-      uploader.createRepoAndUploadFiles(
-        files,
-        accessToken,
-        referenceId,
-        privateRepo
-      );
-      console.log(`Successfully uploaded dataset to ${username}/${repoName}`);
-      return uploader;
-    } catch (error) {
-      console.error("Error uploading to Hugging Face:", error);
-      throw error;
-    }
+    // Start upload asynchronously so UI can subscribe to events immediately
+    (async () => {
+      try {
+        await uploader.createRepoAndUploadFiles(
+          files,
+          accessToken,
+          referenceId,
+          privateRepo,
+          "v2.1"
+        );
+        console.log(
+          `Successfully uploaded dataset to ${username}/${repoName} (v2.1)`
+        );
+      } catch (error: any) {
+        const message = (error && (error.message || `${error}`)) as string;
+        const invalidRev = message?.toLowerCase()?.includes("invalid rev id");
+        if (invalidRev) {
+          console.warn(
+            "v2.1 branch not available yet. Falling back to main for this upload."
+          );
+          try {
+            await uploader.createRepoAndUploadFiles(
+              files,
+              accessToken,
+              referenceId,
+              privateRepo,
+              "main"
+            );
+            console.log(
+              `Successfully uploaded dataset to ${username}/${repoName} (main)`
+            );
+          } catch (e2) {
+            console.error("Error uploading to main:", e2);
+          }
+          return;
+        }
+        console.error("Error uploading to Hugging Face:", error);
+      }
+    })();
+
+    return uploader;
   }
 
   /**

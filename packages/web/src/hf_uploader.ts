@@ -50,7 +50,8 @@ export class LeRobotHFUploader extends EventTarget {
     files: FileArray,
     accessToken: string,
     referenceId: string = "",
-    privateRepo: boolean = false
+    privateRepo: boolean = false,
+    branch: string = "v2.1"
   ) {
     // Try to create repo; if it already exists (409), continue and upload
     try {
@@ -81,16 +82,11 @@ export class LeRobotHFUploader extends EventTarget {
       );
     }
 
-    try {
-      await this.uploadFilesWithProgress(files, accessToken, referenceId);
-      this._uploaded = true;
-      this.dispatchEvent(
-        new CustomEvent("finished", { detail: this._repoDesignation })
-      );
-    } catch (error) {
-      this.dispatchEvent(new CustomEvent("error", { detail: error }));
-      throw error;
-    }
+    await this.uploadFilesWithProgress(files, accessToken, referenceId, branch);
+    this._uploaded = true;
+    this.dispatchEvent(
+      new CustomEvent("finished", { detail: this._repoDesignation })
+    );
   }
 
   /**
@@ -103,7 +99,8 @@ export class LeRobotHFUploader extends EventTarget {
   async uploadFilesWithProgress(
     files: FileArray,
     accessToken: string,
-    referenceId: string = ""
+    referenceId: string = "",
+    branch: string = "v2.1"
   ) {
     // Pre-compute total bytes (best-effort) for aggregate progress
     const getSize = (f: any): number => {
@@ -136,6 +133,7 @@ export class LeRobotHFUploader extends EventTarget {
       repo: this._repoDesignation,
       accessToken: accessToken,
       files: files,
+      branch: branch,
     })) {
       const ev: any = progressEvent as any;
       const fileObj: any = ev.file;

@@ -150,6 +150,13 @@ export function Recorder({
         "Robot teleoperation recording"
       );
 
+      // Populate robot label for dataset metadata (e.g., so100)
+      try {
+        const type = (robot?.robotType || "").toString();
+        const family = type.split("_")[0] || type || "unknown";
+        (recorderRef.current as any).setRobotLabel?.(family);
+      } catch {}
+
       // Restore episodes if any were persisted
       if (persistedEpisodes.length > 0) {
         (recorderRef.current as any).teleoperatorData = [...persistedEpisodes];
