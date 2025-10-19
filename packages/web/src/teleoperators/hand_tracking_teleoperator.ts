@@ -60,6 +60,14 @@ export class HandTrackingTeleoperator extends BaseWebTeleoperator {
 
     const hands = await this.detector.detectHands(this.videoElement);
 
+    // Set video resolution on mapper (only needs to happen once, but no harm in checking)
+    if (this.videoElement.videoWidth && this.videoElement.videoHeight) {
+      this.mapper.setVideoResolution(
+        this.videoElement.videoWidth,
+        this.videoElement.videoHeight
+      );
+    }
+
     if (hands && hands.length > 0) {
       this.handKeypoints = this.detector.extractKeypoints(hands[0]);
 
@@ -80,8 +88,13 @@ export class HandTrackingTeleoperator extends BaseWebTeleoperator {
   private async updateMotorPositions(
     positions: Record<string, number>
   ): Promise<void> {
-    // CALIBRATION MODE: Update shoulder_pan and shoulder_lift
-    const motorNames = ["shoulder_pan", "shoulder_lift"];
+    // Update all motors from inverse kinematics: shoulder_pan, shoulder_lift, elbow_flex, wrist_flex
+    const motorNames = [
+      "shoulder_pan",
+      "shoulder_lift",
+      "elbow_flex",
+      "wrist_flex",
+    ];
 
     for (const motorName of motorNames) {
       const motor = this.motorConfigs.find((m) => m.name === motorName);
@@ -98,8 +111,9 @@ export class HandTrackingTeleoperator extends BaseWebTeleoperator {
         Math.min(motor.maxPosition, newPosition)
       );
 
-      // Only send if position changed
-      if (clampedPosition !== motor.currentPosition) {
+      // Only send if position changed significantly (avoid jitter from small changes)
+      const positionDiff = Math.abs(clampedPosition - motor.currentPosition);
+      if (positionDiff > 5) {
         try {
           await writeMotorPosition(
             this.port,

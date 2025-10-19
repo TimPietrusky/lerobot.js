@@ -16,10 +16,17 @@ export class HandGestureMapper {
   private lastMotorPositions: Record<string, number> = {};
   private lastKeypoints: HandKeypoints = {};
   private lastPinchDistance: number = 0;
+  private videoWidth: number = 640; // Default, will be updated
+  private videoHeight: number = 480; // Default, will be updated
 
   constructor(motorConfigs: MotorConfig[], config: HandTrackingConfig) {
     this.motorConfigs = motorConfigs;
     this.config = config;
+  }
+
+  setVideoResolution(width: number, height: number): void {
+    this.videoWidth = width;
+    this.videoHeight = height;
   }
 
   mapGesturesToMotors(keypoints: HandKeypoints): Record<string, number> {
@@ -33,28 +40,27 @@ export class HandGestureMapper {
 
     if (!indexTip || !thumbTip || !wrist) return motorPositions;
 
-    // CALIBRATION MODE: Map hand X/Y position to shoulder_pan and shoulder_lift
-    const normalizedX = this.normalizePosition(indexTip.x, "x");
-    const normalizedY = this.normalizePosition(indexTip.y, "y");
+    // Map hand position to planar coordinates (X, Y, Z)
+    const normalizedX = -this.normalizePosition(indexTip.x, "x"); // Invert X so right is positive
+    const normalizedY = this.normalizePosition(indexTip.y, "y"); // No inversion needed here
+
+    // Z-axis from pinch distance (thumb to index)
+    const pinchDistance = this.calculateDistance(thumbTip, indexTip);
+    this.lastPinchDistance = pinchDistance;
+    const normalizedZ = this.normalizePinchDistance(pinchDistance);
 
     this.smoothedPosition.x = this.smooth(this.smoothedPosition.x, normalizedX);
     this.smoothedPosition.y = this.smooth(this.smoothedPosition.y, normalizedY);
+    this.smoothedPosition.z = this.smooth(this.smoothedPosition.z, normalizedZ);
 
-    // Map X position to shoulder_pan (range: 500-3500)
-    const motorRange = 3500 - 500;
-    const motorCenter = 500 + motorRange / 2;
-    const motorValueX =
-      motorCenter + this.smoothedPosition.x * (motorRange / 2);
-    motorPositions["shoulder_pan"] = Math.max(500, Math.min(3500, motorValueX));
-
-    // Map Y position to shoulder_lift (range: 500-3500)
-    const motorValueY =
-      motorCenter + this.smoothedPosition.y * (motorRange / 2);
-    motorPositions["shoulder_lift"] = Math.max(
-      500,
-      Math.min(3500, motorValueY)
+    // Use inverse kinematics to map hand position to multiple motors
+    const ikMotors = this.planarToMotors(
+      this.smoothedPosition.x,
+      this.smoothedPosition.y,
+      this.smoothedPosition.z
     );
 
+    Object.assign(motorPositions, ikMotors);
     this.activeGestures.push("hand_position");
 
     this.lastMotorPositions = motorPositions;
@@ -63,7 +69,12 @@ export class HandGestureMapper {
 
   private normalizePosition(value: number, axis: "x" | "y"): number {
     const scale = this.config.cameraToControlScale || 0.7;
-    const normalized = (value - 320) / 320;
+
+    // Use actual video dimensions instead of hardcoded values
+    const maxValue = axis === "x" ? this.videoWidth : this.videoHeight;
+    const center = maxValue / 2;
+    const normalized = (value - center) / center;
+
     return Math.max(-1, Math.min(1, normalized / scale));
   }
 
@@ -94,39 +105,21 @@ export class HandGestureMapper {
     const ARM_LENGTH_1 = 210;
     const ARM_LENGTH_2 = 200;
 
-    const targetX = x * 300;
-    const targetY = y * 300 + 100;
+    // Decoupled control: X controls shoulder_pan, Y controls shoulder_lift, Z extends reach
+    const motorRange = 3500 - 500;
+    const motorCenter = 500 + motorRange / 2;
 
-    const d = Math.sqrt(targetX * targetX + targetY * targetY);
+    // X-axis: directly map to shoulder_pan (left/right rotation)
+    const shoulderPan = motorCenter + x * (motorRange / 2);
 
-    if (
-      d > ARM_LENGTH_1 + ARM_LENGTH_2 ||
-      d < Math.abs(ARM_LENGTH_1 - ARM_LENGTH_2)
-    ) {
-      return {
-        shoulder_pan: 2047,
-        shoulder_lift: 2047,
-        elbow_flex: 2047,
-        wrist_flex: 2047,
-      };
-    }
+    // Y-axis: directly map to shoulder_lift (up/down movement)
+    const shoulderLift = motorCenter + y * (motorRange / 2);
 
-    const angle2Cos =
-      (d * d - ARM_LENGTH_1 * ARM_LENGTH_1 - ARM_LENGTH_2 * ARM_LENGTH_2) /
-      (2 * ARM_LENGTH_1 * ARM_LENGTH_2);
-    const angle2 = Math.acos(Math.max(-1, Math.min(1, angle2Cos)));
+    // Z-axis (pinch): controls elbow extension for reach
+    const elbowFlex = motorCenter + z * (motorRange / 2);
 
-    const k1 = ARM_LENGTH_1 + ARM_LENGTH_2 * Math.cos(angle2);
-    const k2 = ARM_LENGTH_2 * Math.sin(angle2);
-    const angle1 = Math.atan2(targetY, targetX) - Math.atan2(k2, k1);
-
-    const shoulderPan = 2047 + ((angle1 * 180) / Math.PI) * (2048 / 180);
-    const shoulderLift = 2047 - (((angle2 * 180) / Math.PI) * (2048 / 180)) / 2;
-    const elbowFlex = 2047 + ((angle2 * 180) / Math.PI) * (2048 / 180);
-
-    const zRange =
-      (this.config.zRangeMax || 2.4) - (this.config.zRangeMin || 0.4);
-    const wristFlex = 2047 + (z * zRange - 1.2) * (2048 / 3.6);
+    // Wrist flex stays centered by default
+    const wristFlex = 2047;
 
     return {
       shoulder_pan: Math.round(Math.max(500, Math.min(3500, shoulderPan))),
