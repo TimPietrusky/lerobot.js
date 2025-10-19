@@ -19,9 +19,11 @@ import type {
   TeleoperatorConfig,
   DirectTeleoperatorConfig,
 } from "./types/teleoperation.js";
+import type { HandTrackingConfig } from "./types/hand_tracking.js";
 import {
   KeyboardTeleoperator,
   DirectTeleoperator,
+  HandTrackingTeleoperator,
   type WebTeleoperator,
 } from "./teleoperators/index.js";
 
@@ -109,6 +111,22 @@ async function createTeleoperator(
         config.onStateUpdate
       );
 
+    case "hand-tracking": {
+      const htConfig = config.teleop as any;
+      if (!htConfig.videoElement || !htConfig.mediaStream) {
+        throw new Error("Hand tracking requires videoElement and mediaStream");
+      }
+      const handTrackingTeleop = new HandTrackingTeleoperator(
+        port,
+        motorConfigs,
+        htConfig.videoElement,
+        htConfig.mediaStream,
+        htConfig.handTrackingConfig || {}
+      );
+      await handTrackingTeleop.initialize();
+      return handTrackingTeleop;
+    }
+
     case "so100_leader":
       throw new Error("Leader arm teleoperator not yet implemented");
 
@@ -172,7 +190,7 @@ export async function teleoperate(
     },
     getState: () => buildTeleoperationStateFromTeleoperator(teleoperator),
     teleoperator,
-    disconnect: () => teleoperator.disconnect()
+    disconnect: () => teleoperator.disconnect(),
   };
 }
 

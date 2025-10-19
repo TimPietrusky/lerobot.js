@@ -1,6 +1,15 @@
 "use client";
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { Power, PowerOff, Keyboard, Box } from "lucide-react";
+import {
+  Power,
+  PowerOff,
+  Keyboard,
+  Box,
+  Camera,
+  AlertCircle,
+  Settings,
+  RotateCcw,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,8 +20,22 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { useCameraStream } from "@/hooks/use_camera_stream";
 import {
   teleoperate,
   type TeleoperationProcess,
@@ -26,10 +49,25 @@ import { Canvas } from "@react-three/fiber";
 import { Physics } from "@react-three/cannon";
 import * as THREE from "three";
 import { OrbitControls } from "@react-three/drei";
+import { renderHandKeypoints } from "@lerobot/web";
 
 interface TeleoperationViewProps {
   robot: RobotConnection;
 }
+
+type TeleoperatorType = "keyboard" | "direct" | "hand-tracking";
+
+interface HandTrackingSettings {
+  cameraToControlScale: number;
+  positionSmoothing: number;
+  pinchThreshold: number;
+}
+
+const DEFAULT_HAND_TRACKING_SETTINGS: HandTrackingSettings = {
+  cameraToControlScale: 0.7,
+  positionSmoothing: 0.3,
+  pinchThreshold: 50,
+};
 
 // Keyboard controls for SO-100 (from conventions)
 const SO100_KEYBOARD_CONTROLS = {
@@ -85,6 +123,11 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
     keyStates: {},
   });
 
+  const [selectedTeleopType, setSelectedTeleopType] =
+    useState<TeleoperatorType>("keyboard");
+  const [handTrackingSettings, setHandTrackingSettings] =
+    useState<HandTrackingSettings>(DEFAULT_HAND_TRACKING_SETTINGS);
+  const [showSettings, setShowSettings] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   // Local slider positions for immediate UI feedback with timestamps
   const [localMotorPositions, setLocalMotorPositions] = useState<{
@@ -92,7 +135,17 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
   }>({});
   const keyboardProcessRef = useRef<TeleoperationProcess | null>(null);
   const directProcessRef = useRef<TeleoperationProcess | null>(null);
+  const handTrackingProcessRef = useRef<TeleoperationProcess | null>(null);
   const { toast } = useToast();
+  const {
+    stream: cameraStream,
+    error: cameraError,
+    requestCamera,
+    stopCamera,
+    isLoading: isCameraLoading,
+  } = useCameraStream();
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Load calibration data from unified storage
   const calibrationData = useMemo(() => {
@@ -174,6 +227,75 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
     }
   }, [robot, robot.robotType, calibrationData, toast]);
 
+  // Initialize hand tracking when camera stream becomes available
+  useEffect(() => {
+    const initializeHandTracking = async () => {
+      if (
+        selectedTeleopType === "hand-tracking" &&
+        cameraStream &&
+        videoRef.current
+      ) {
+        try {
+          videoRef.current.srcObject = cameraStream;
+
+          const handTrackingConfig: TeleoperateConfig = {
+            robot: robot,
+            teleop: {
+              type: "hand-tracking",
+              videoElement: videoRef.current,
+              mediaStream: cameraStream,
+              handTrackingConfig: {
+                cameraToControlScale: handTrackingSettings.cameraToControlScale,
+                zRangeMin: 0.4,
+                zRangeMax: 2.4,
+                positionSmoothing: handTrackingSettings.positionSmoothing,
+                pinchThreshold: handTrackingSettings.pinchThreshold,
+              },
+            },
+            calibrationData,
+            onStateUpdate: (state: TeleoperationState) => {
+              setTeleopState(state);
+              if (canvasRef.current && (state as any).handKeypoints) {
+                // Set canvas size to match video element
+                const video = videoRef.current;
+                if (video && video.videoWidth && video.videoHeight) {
+                  canvasRef.current.width = video.videoWidth;
+                  canvasRef.current.height = video.videoHeight;
+                }
+                renderHandKeypoints(
+                  canvasRef.current,
+                  (state as any).handKeypoints
+                );
+              }
+            },
+          };
+
+          const handTrackingProcess = await teleoperate(handTrackingConfig);
+          handTrackingProcessRef.current = handTrackingProcess;
+        } catch (error) {
+          const errorMessage =
+            error instanceof Error
+              ? error.message
+              : "Failed to initialize hand tracking";
+          toast({
+            title: "Hand Tracking Error",
+            description: errorMessage,
+            variant: "destructive",
+          });
+        }
+      }
+    };
+
+    initializeHandTracking();
+  }, [
+    selectedTeleopType,
+    cameraStream,
+    handTrackingSettings,
+    calibrationData,
+    robot,
+    toast,
+  ]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -187,13 +309,18 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
             await directProcessRef.current.disconnect();
             directProcessRef.current = null;
           }
+          if (handTrackingProcessRef.current) {
+            await handTrackingProcessRef.current.disconnect();
+            handTrackingProcessRef.current = null;
+          }
+          stopCamera();
         } catch (error) {
           console.warn("Error during teleoperation cleanup:", error);
         }
       };
       cleanup();
     };
-  }, []);
+  }, [stopCamera]);
 
   // Keyboard event handlers (guarded to not interfere with inputs/shortcuts)
   const handleKeyDown = useCallback(
@@ -326,7 +453,27 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
       if (!success) return;
     }
 
-    if (!(keyboardProcessRef.current || directProcessRef.current)) {
+    // Request camera for hand tracking
+    if (selectedTeleopType === "hand-tracking" && !cameraStream) {
+      try {
+        await requestCamera();
+      } catch (error) {
+        toast({
+          title: "Camera Error",
+          description: "Failed to access camera",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
+    if (
+      !(
+        keyboardProcessRef.current ||
+        directProcessRef.current ||
+        handTrackingProcessRef.current
+      )
+    ) {
       toast({
         title: "Teleoperation Error",
         description: "Teleoperation not initialized",
@@ -336,8 +483,14 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
     }
 
     try {
-      keyboardProcessRef.current?.start();
-      directProcessRef.current?.start();
+      if (selectedTeleopType === "keyboard") {
+        keyboardProcessRef.current?.start();
+        directProcessRef.current?.start();
+      } else if (selectedTeleopType === "direct") {
+        directProcessRef.current?.start();
+      } else if (selectedTeleopType === "hand-tracking") {
+        handTrackingProcessRef.current?.start();
+      }
     } catch (error) {
       const errorMessage =
         error instanceof Error
@@ -353,14 +506,35 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
 
   const handleStop = async () => {
     try {
-      if (keyboardProcessRef.current) {
-        keyboardProcessRef.current.stop();
-      }
-      if (directProcessRef.current) {
-        directProcessRef.current.stop();
+      if (
+        selectedTeleopType === "keyboard" ||
+        selectedTeleopType === "direct"
+      ) {
+        keyboardProcessRef.current?.stop();
+        directProcessRef.current?.stop();
+      } else if (selectedTeleopType === "hand-tracking") {
+        handTrackingProcessRef.current?.stop();
       }
     } catch (error) {
       console.warn("Error during teleoperation stop:", error);
+    }
+  };
+
+  const handleTeleopTypeChange = async (value: TeleoperatorType) => {
+    handleStop();
+    setSelectedTeleopType(value);
+
+    // Request camera when hand-tracking is selected
+    if (value === "hand-tracking" && !cameraStream) {
+      try {
+        await requestCamera();
+      } catch (error) {
+        toast({
+          title: "Camera Error",
+          description: "Failed to access camera",
+          variant: "destructive",
+        });
+      }
     }
   };
 
@@ -485,6 +659,14 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
   const keyStates = teleopState?.keyStates || {};
   const controls = SO100_KEYBOARD_CONTROLS;
 
+  const handleResetSettings = () => {
+    setHandTrackingSettings(DEFAULT_HAND_TRACKING_SETTINGS);
+    toast({
+      title: "Settings Reset",
+      description: "Hand tracking settings restored to defaults",
+    });
+  };
+
   return (
     <>
       <Card className="border-0 rounded-none">
@@ -505,6 +687,26 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
             </div>
             <div className="flex items-center gap-6">
               <div className="border-l border-white/10 pl-6 flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-mono text-muted-foreground uppercase">
+                    control type:
+                  </span>
+                  <Select
+                    value={selectedTeleopType}
+                    onValueChange={handleTeleopTypeChange}
+                  >
+                    <SelectTrigger className="w-40">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="keyboard">Keyboard</SelectItem>
+                      <SelectItem value="direct">Direct</SelectItem>
+                      <SelectItem value="hand-tracking">
+                        Hand Tracking
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
                 {teleopState?.isActive ? (
                   <Button onClick={handleStop} variant="destructive" size="lg">
                     <PowerOff className="w-5 h-5 mr-2" /> Stop Control
@@ -554,6 +756,346 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
             </div>
           </div>
         </div>
+
+        {cameraError && selectedTeleopType === "hand-tracking" && (
+          <Alert
+            variant="destructive"
+            className="rounded-none border-0 border-b border-white/10"
+          >
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              Camera Error: {cameraError.message}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {selectedTeleopType === "hand-tracking" && (
+          <div className="p-6 border-b border-white/10 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-sans font-semibold mb-4 text-xl">
+                Hand Tracking
+              </h3>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowSettings(!showSettings)}
+                      className="gap-2"
+                    >
+                      <Settings className="w-4 h-4" />
+                      Settings
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Adjust hand tracking parameters
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="relative bg-black/50 rounded-lg overflow-hidden aspect-video">
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  className="w-full h-full object-cover scale-x-[-1]"
+                />
+                <canvas
+                  ref={canvasRef}
+                  className="absolute inset-0 w-full h-full"
+                />
+              </div>
+              <div className="space-y-4 overflow-y-auto max-h-[480px]">
+                <div>
+                  <p className="text-sm font-mono text-muted-foreground mb-2">
+                    Camera Status
+                  </p>
+                  <div className="flex items-center gap-2">
+                    {cameraStream ? (
+                      <>
+                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                        <span className="text-green-400 font-mono text-sm">
+                          Camera Active
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                        <span className="text-red-400 font-mono text-sm">
+                          No Camera
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </div>
+                {(teleopState as any)?.detectedGestures && (
+                  <div>
+                    <p className="text-sm font-mono text-muted-foreground mb-2">
+                      Active Gestures
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {(teleopState as any).detectedGestures.map(
+                        (gesture: string) => (
+                          <Badge key={gesture} variant="secondary">
+                            {gesture}
+                          </Badge>
+                        )
+                      )}
+                      {(teleopState as any)?.detectedGestures.length === 0 && (
+                        <span className="text-muted-foreground text-sm font-mono">
+                          None detected
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Gesture Guide - Always Open */}
+                <div className="p-3 bg-black/30 rounded-lg border border-white/10 space-y-3">
+                  <p
+                    className="text-sm text-muted-foreground uppercase font-semibold"
+                    style={{ fontFamily: "'Geist Mono', monospace" }}
+                  >
+                    📖 Gesture Guide (Calibration Mode)
+                  </p>
+                  <div
+                    className="text-xs space-y-2"
+                    style={{ fontFamily: "'Geist Mono', monospace" }}
+                  >
+                    <div className="border-l-2 border-blue-400 pl-3">
+                      <p className="font-semibold text-blue-400">
+                        Hand Position X
+                      </p>
+                      <p className="text-muted-foreground text-xs">
+                        Move hand left/right → shoulder_pan
+                      </p>
+                    </div>
+                    <div className="border-l-2 border-cyan-400 pl-3">
+                      <p className="font-semibold text-cyan-400">
+                        Hand Position Y
+                      </p>
+                      <p className="text-muted-foreground text-xs">
+                        Move hand up/down → shoulder_lift
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Debug Info - Motor Positions */}
+            {(teleopState as any)?.isActive && (
+              <div className="mt-4 p-4 bg-black/40 rounded-lg border border-white/10 space-y-3">
+                <p className="text-sm font-mono text-muted-foreground uppercase font-semibold">
+                  Motor Debug Info
+                </p>
+                <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                  {handTrackingProcessRef.current?.teleoperator &&
+                    "getDebugInfo" in
+                      handTrackingProcessRef.current.teleoperator &&
+                    Object.entries(
+                      (
+                        handTrackingProcessRef.current.teleoperator as any
+                      ).getDebugInfo()?.motorPositions || {}
+                    ).map(([motorName, position]) => (
+                      <div
+                        key={motorName}
+                        className="flex justify-between bg-black/30 px-2 py-1 rounded text-white/80"
+                      >
+                        <span className="text-blue-400">{motorName}:</span>
+                        <span className="text-green-400">
+                          {typeof position === "number"
+                            ? position.toFixed(0)
+                            : position}
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+
+            {/* Gesture Guide */}
+            <Collapsible>
+              <CollapsibleTrigger className="flex items-center gap-2 text-sm font-mono text-muted-foreground hover:text-foreground mt-4 p-2">
+                <span>📖</span>
+                <span>Gesture Guide</span>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-3 p-4 bg-black/30 rounded-lg border border-white/10 space-y-3">
+                <div className="text-xs space-y-3">
+                  <div className="border-l-2 border-blue-400 pl-3">
+                    <p className="font-semibold text-blue-400">
+                      Hand Position (X/Y)
+                    </p>
+                    <p className="text-muted-foreground">
+                      Move your hand horizontally and vertically to control the
+                      robot arm's X and Y position in 2D space. The index finger
+                      tip tracks this movement.
+                    </p>
+                  </div>
+                  <div className="border-l-2 border-green-400 pl-3">
+                    <p className="font-semibold text-green-400">
+                      Pinch (Z-axis)
+                    </p>
+                    <p className="text-muted-foreground">
+                      Pinch your thumb and index finger together to
+                      extend/retract the arm's reach along the Z-axis. Closer
+                      pinch = arm extends further out.
+                    </p>
+                  </div>
+                  <div className="border-l-2 border-yellow-400 pl-3">
+                    <p className="font-semibold text-yellow-400">
+                      Gripper Control
+                    </p>
+                    <p className="text-muted-foreground">
+                      Distance between thumb and index finger controls gripper
+                      opening. Pinched = closed, fingers spread = open.
+                    </p>
+                  </div>
+                  <div className="border-l-2 border-orange-400 pl-3">
+                    <p className="font-semibold text-orange-400">
+                      Wrist Rotation
+                    </p>
+                    <p className="text-muted-foreground">
+                      Rotate your hand (twist your wrist) to rotate the gripper
+                      left or right.
+                    </p>
+                  </div>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+
+            {showSettings && (
+              <div className="mt-6 p-4 bg-black/30 rounded-lg border border-white/10 space-y-6">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-mono font-semibold text-sm uppercase tracking-wide">
+                    Parameter Tuning
+                  </h4>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleResetSettings}
+                          className="gap-1 h-8"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                          Reset
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Restore default settings</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+
+                <div className="space-y-4">
+                  {/* Camera-to-Control Scale */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-sm font-mono text-muted-foreground">
+                        Buffer Zone (Camera Scale)
+                      </label>
+                      <span className="text-xs font-mono bg-black/50 px-2 py-1 rounded">
+                        {handTrackingSettings.cameraToControlScale.toFixed(2)}
+                      </span>
+                    </div>
+                    <Slider
+                      value={[handTrackingSettings.cameraToControlScale]}
+                      min={0.5}
+                      max={1.0}
+                      step={0.05}
+                      onValueChange={(val) =>
+                        setHandTrackingSettings((prev) => ({
+                          ...prev,
+                          cameraToControlScale: val[0],
+                        }))
+                      }
+                      className="w-full"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Lower = more buffer zone, prevents edge triggers
+                    </p>
+                  </div>
+
+                  {/* Position Smoothing */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-sm font-mono text-muted-foreground">
+                        Position Smoothing
+                      </label>
+                      <span className="text-xs font-mono bg-black/50 px-2 py-1 rounded">
+                        {handTrackingSettings.positionSmoothing.toFixed(2)}
+                      </span>
+                    </div>
+                    <Slider
+                      value={[handTrackingSettings.positionSmoothing]}
+                      min={0.1}
+                      max={0.5}
+                      step={0.05}
+                      onValueChange={(val) =>
+                        setHandTrackingSettings((prev) => ({
+                          ...prev,
+                          positionSmoothing: val[0],
+                        }))
+                      }
+                      className="w-full"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Higher = more smoothing, reduces jitter but adds lag
+                    </p>
+                  </div>
+
+                  {/* Pinch Threshold */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-sm font-mono text-muted-foreground">
+                        Pinch Threshold (pixels)
+                      </label>
+                      <span className="text-xs font-mono bg-black/50 px-2 py-1 rounded">
+                        {handTrackingSettings.pinchThreshold}px
+                      </span>
+                    </div>
+                    <Slider
+                      value={[handTrackingSettings.pinchThreshold]}
+                      min={30}
+                      max={100}
+                      step={5}
+                      onValueChange={(val) =>
+                        setHandTrackingSettings((prev) => ({
+                          ...prev,
+                          pinchThreshold: val[0],
+                        }))
+                      }
+                      className="w-full"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Distance between thumb and index to trigger gripper
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-white/10 grid grid-cols-3 gap-2 text-xs">
+                  <div className="bg-black/50 p-2 rounded">
+                    <p className="text-muted-foreground">Default Buffer</p>
+                    <p className="font-mono text-accent">0.70</p>
+                  </div>
+                  <div className="bg-black/50 p-2 rounded">
+                    <p className="text-muted-foreground">Default Smooth</p>
+                    <p className="font-mono text-accent">0.30</p>
+                  </div>
+                  <div className="bg-black/50 p-2 rounded">
+                    <p className="text-muted-foreground">Default Pinch</p>
+                    <p className="font-mono text-accent">50px</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="pt-6 p-6 grid md:grid-cols-2 gap-8">
           <div>
             <h3 className="font-sans font-semibold mb-4 text-xl">
@@ -590,253 +1132,262 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
               ))}
             </div>
           </div>
-          <div>
-            <h3 className="font-sans font-semibold mb-4 text-xl">
-              Keyboard Layout & Status
-            </h3>
-            <div className="p-4 bg-black/30 rounded-lg space-y-4">
-              <div className="flex justify-around items-end">
-                <div className="flex flex-col items-center gap-2">
-                  <VirtualKey
-                    label="↑"
-                    subLabel="Lift+"
-                    isPressed={
-                      !!keyStates[controls.shoulder_lift.positive]?.pressed
-                    }
-                    onMouseDown={() =>
-                      simulateKeyPress(controls.shoulder_lift.positive)
-                    }
-                    onMouseUp={() =>
-                      simulateKeyRelease(controls.shoulder_lift.positive)
-                    }
-                    disabled={!teleopState?.isActive}
-                  />
-                  <div className="flex gap-2">
+          {selectedTeleopType !== "hand-tracking" && (
+            <div>
+              <h3 className="font-sans font-semibold mb-4 text-xl">
+                Keyboard Layout & Status
+              </h3>
+              <div className="p-4 bg-black/30 rounded-lg space-y-4">
+                <div className="flex justify-around items-end">
+                  <div className="flex flex-col items-center gap-2">
                     <VirtualKey
-                      label="←"
-                      subLabel="Pan-"
+                      label="↑"
+                      subLabel="Lift+"
                       isPressed={
-                        !!keyStates[controls.shoulder_pan.negative]?.pressed
+                        !!keyStates[controls.shoulder_lift.positive]?.pressed
                       }
                       onMouseDown={() =>
-                        simulateKeyPress(controls.shoulder_pan.negative)
+                        simulateKeyPress(controls.shoulder_lift.positive)
                       }
                       onMouseUp={() =>
-                        simulateKeyRelease(controls.shoulder_pan.negative)
+                        simulateKeyRelease(controls.shoulder_lift.positive)
                       }
                       disabled={!teleopState?.isActive}
                     />
-                    <VirtualKey
-                      label="↓"
-                      subLabel="Lift-"
-                      isPressed={
-                        !!keyStates[controls.shoulder_lift.negative]?.pressed
-                      }
-                      onMouseDown={() =>
-                        simulateKeyPress(controls.shoulder_lift.negative)
-                      }
-                      onMouseUp={() =>
-                        simulateKeyRelease(controls.shoulder_lift.negative)
-                      }
-                      disabled={!teleopState?.isActive}
-                    />
-                    <VirtualKey
-                      label="→"
-                      subLabel="Pan+"
-                      isPressed={
-                        !!keyStates[controls.shoulder_pan.positive]?.pressed
-                      }
-                      onMouseDown={() =>
-                        simulateKeyPress(controls.shoulder_pan.positive)
-                      }
-                      onMouseUp={() =>
-                        simulateKeyRelease(controls.shoulder_pan.positive)
-                      }
-                      disabled={!teleopState?.isActive}
-                    />
-                  </div>
-                  <span className="font-bold text-sm font-sans">Shoulder</span>
-                </div>
-                <div className="flex flex-col items-center gap-2">
-                  <VirtualKey
-                    label="W"
-                    subLabel="Elbow+"
-                    isPressed={
-                      !!keyStates[controls.elbow_flex.positive]?.pressed
-                    }
-                    onMouseDown={() =>
-                      simulateKeyPress(controls.elbow_flex.positive)
-                    }
-                    onMouseUp={() =>
-                      simulateKeyRelease(controls.elbow_flex.positive)
-                    }
-                    disabled={!teleopState?.isActive}
-                  />
-                  <div className="flex gap-2">
-                    <VirtualKey
-                      label="A"
-                      subLabel="Wrist+"
-                      isPressed={
-                        !!keyStates[controls.wrist_flex.positive]?.pressed
-                      }
-                      onMouseDown={() =>
-                        simulateKeyPress(controls.wrist_flex.positive)
-                      }
-                      onMouseUp={() =>
-                        simulateKeyRelease(controls.wrist_flex.positive)
-                      }
-                      disabled={!teleopState?.isActive}
-                    />
-                    <VirtualKey
-                      label="S"
-                      subLabel="Elbow-"
-                      isPressed={
-                        !!keyStates[controls.elbow_flex.negative]?.pressed
-                      }
-                      onMouseDown={() =>
-                        simulateKeyPress(controls.elbow_flex.negative)
-                      }
-                      onMouseUp={() =>
-                        simulateKeyRelease(controls.elbow_flex.negative)
-                      }
-                      disabled={!teleopState?.isActive}
-                    />
-                    <VirtualKey
-                      label="D"
-                      subLabel="Wrist-"
-                      isPressed={
-                        !!keyStates[controls.wrist_flex.negative]?.pressed
-                      }
-                      onMouseDown={() =>
-                        simulateKeyPress(controls.wrist_flex.negative)
-                      }
-                      onMouseUp={() =>
-                        simulateKeyRelease(controls.wrist_flex.negative)
-                      }
-                      disabled={!teleopState?.isActive}
-                    />
-                  </div>
-                  <span className="font-bold text-sm font-sans">
-                    Elbow/Wrist
-                  </span>
-                </div>
-                <div className="flex flex-col items-center gap-2">
-                  <div className="flex gap-2">
-                    <VirtualKey
-                      label="Q"
-                      subLabel="Roll+"
-                      isPressed={
-                        !!keyStates[controls.wrist_roll.positive]?.pressed
-                      }
-                      onMouseDown={() =>
-                        simulateKeyPress(controls.wrist_roll.positive)
-                      }
-                      onMouseUp={() =>
-                        simulateKeyRelease(controls.wrist_roll.positive)
-                      }
-                      disabled={!teleopState?.isActive}
-                    />
-                    <VirtualKey
-                      label="E"
-                      subLabel="Roll-"
-                      isPressed={
-                        !!keyStates[controls.wrist_roll.negative]?.pressed
-                      }
-                      onMouseDown={() =>
-                        simulateKeyPress(controls.wrist_roll.negative)
-                      }
-                      onMouseUp={() =>
-                        simulateKeyRelease(controls.wrist_roll.negative)
-                      }
-                      disabled={!teleopState?.isActive}
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <VirtualKey
-                      label="O"
-                      subLabel="Grip+"
-                      isPressed={
-                        !!keyStates[controls.gripper.positive]?.pressed
-                      }
-                      onMouseDown={() =>
-                        simulateKeyPress(controls.gripper.positive)
-                      }
-                      onMouseUp={() =>
-                        simulateKeyRelease(controls.gripper.positive)
-                      }
-                      disabled={!teleopState?.isActive}
-                    />
-                    <VirtualKey
-                      label="C"
-                      subLabel="Grip-"
-                      isPressed={
-                        !!keyStates[controls.gripper.negative]?.pressed
-                      }
-                      onMouseDown={() =>
-                        simulateKeyPress(controls.gripper.negative)
-                      }
-                      onMouseUp={() =>
-                        simulateKeyRelease(controls.gripper.negative)
-                      }
-                      disabled={!teleopState?.isActive}
-                    />
-                  </div>
-                  <span className="font-bold text-sm font-sans">Roll/Grip</span>
-                </div>
-              </div>
-              <div className="pt-4 border-t border-white/10">
-                <div className="flex justify-between items-center font-mono text-sm">
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Keyboard className="w-4 h-4" />
-                    <span>
-                      Active Keys:{" "}
-                      {Object.values(keyStates).filter((k) => k.pressed).length}
+                    <div className="flex gap-2">
+                      <VirtualKey
+                        label="←"
+                        subLabel="Pan-"
+                        isPressed={
+                          !!keyStates[controls.shoulder_pan.negative]?.pressed
+                        }
+                        onMouseDown={() =>
+                          simulateKeyPress(controls.shoulder_pan.negative)
+                        }
+                        onMouseUp={() =>
+                          simulateKeyRelease(controls.shoulder_pan.negative)
+                        }
+                        disabled={!teleopState?.isActive}
+                      />
+                      <VirtualKey
+                        label="↓"
+                        subLabel="Lift-"
+                        isPressed={
+                          !!keyStates[controls.shoulder_lift.negative]?.pressed
+                        }
+                        onMouseDown={() =>
+                          simulateKeyPress(controls.shoulder_lift.negative)
+                        }
+                        onMouseUp={() =>
+                          simulateKeyRelease(controls.shoulder_lift.negative)
+                        }
+                        disabled={!teleopState?.isActive}
+                      />
+                      <VirtualKey
+                        label="→"
+                        subLabel="Pan+"
+                        isPressed={
+                          !!keyStates[controls.shoulder_pan.positive]?.pressed
+                        }
+                        onMouseDown={() =>
+                          simulateKeyPress(controls.shoulder_pan.positive)
+                        }
+                        onMouseUp={() =>
+                          simulateKeyRelease(controls.shoulder_pan.positive)
+                        }
+                        disabled={!teleopState?.isActive}
+                      />
+                    </div>
+                    <span className="font-bold text-sm font-sans">
+                      Shoulder
                     </span>
                   </div>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <div
-                          className={cn(
-                            "w-10 h-6 border rounded-md flex items-center justify-center font-mono text-xs transition-all",
-                            "select-none user-select-none",
-                            !teleopState?.isActive &&
-                              "opacity-50 cursor-not-allowed",
-                            teleopState?.isActive &&
-                              "cursor-pointer hover:bg-white/5",
-                            keyStates[controls.stop]?.pressed
-                              ? "bg-destructive text-destructive-foreground border-destructive"
-                              : "bg-background"
-                          )}
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            if (teleopState?.isActive) {
-                              simulateKeyPress(controls.stop);
-                            }
-                          }}
-                          onMouseUp={(e) => {
-                            e.preventDefault();
-                            if (teleopState?.isActive) {
-                              simulateKeyRelease(controls.stop);
-                            }
-                          }}
-                          onMouseLeave={(e) => {
-                            e.preventDefault();
-                            if (teleopState?.isActive) {
-                              simulateKeyRelease(controls.stop);
-                            }
-                          }}
-                        >
-                          ESC
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent>Emergency Stop</TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                  <div className="flex flex-col items-center gap-2">
+                    <VirtualKey
+                      label="W"
+                      subLabel="Elbow+"
+                      isPressed={
+                        !!keyStates[controls.elbow_flex.positive]?.pressed
+                      }
+                      onMouseDown={() =>
+                        simulateKeyPress(controls.elbow_flex.positive)
+                      }
+                      onMouseUp={() =>
+                        simulateKeyRelease(controls.elbow_flex.positive)
+                      }
+                      disabled={!teleopState?.isActive}
+                    />
+                    <div className="flex gap-2">
+                      <VirtualKey
+                        label="A"
+                        subLabel="Wrist+"
+                        isPressed={
+                          !!keyStates[controls.wrist_flex.positive]?.pressed
+                        }
+                        onMouseDown={() =>
+                          simulateKeyPress(controls.wrist_flex.positive)
+                        }
+                        onMouseUp={() =>
+                          simulateKeyRelease(controls.wrist_flex.positive)
+                        }
+                        disabled={!teleopState?.isActive}
+                      />
+                      <VirtualKey
+                        label="S"
+                        subLabel="Elbow-"
+                        isPressed={
+                          !!keyStates[controls.elbow_flex.negative]?.pressed
+                        }
+                        onMouseDown={() =>
+                          simulateKeyPress(controls.elbow_flex.negative)
+                        }
+                        onMouseUp={() =>
+                          simulateKeyRelease(controls.elbow_flex.negative)
+                        }
+                        disabled={!teleopState?.isActive}
+                      />
+                      <VirtualKey
+                        label="D"
+                        subLabel="Wrist-"
+                        isPressed={
+                          !!keyStates[controls.wrist_flex.negative]?.pressed
+                        }
+                        onMouseDown={() =>
+                          simulateKeyPress(controls.wrist_flex.negative)
+                        }
+                        onMouseUp={() =>
+                          simulateKeyRelease(controls.wrist_flex.negative)
+                        }
+                        disabled={!teleopState?.isActive}
+                      />
+                    </div>
+                    <span className="font-bold text-sm font-sans">
+                      Elbow/Wrist
+                    </span>
+                  </div>
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="flex gap-2">
+                      <VirtualKey
+                        label="Q"
+                        subLabel="Roll+"
+                        isPressed={
+                          !!keyStates[controls.wrist_roll.positive]?.pressed
+                        }
+                        onMouseDown={() =>
+                          simulateKeyPress(controls.wrist_roll.positive)
+                        }
+                        onMouseUp={() =>
+                          simulateKeyRelease(controls.wrist_roll.positive)
+                        }
+                        disabled={!teleopState?.isActive}
+                      />
+                      <VirtualKey
+                        label="E"
+                        subLabel="Roll-"
+                        isPressed={
+                          !!keyStates[controls.wrist_roll.negative]?.pressed
+                        }
+                        onMouseDown={() =>
+                          simulateKeyPress(controls.wrist_roll.negative)
+                        }
+                        onMouseUp={() =>
+                          simulateKeyRelease(controls.wrist_roll.negative)
+                        }
+                        disabled={!teleopState?.isActive}
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <VirtualKey
+                        label="O"
+                        subLabel="Grip+"
+                        isPressed={
+                          !!keyStates[controls.gripper.positive]?.pressed
+                        }
+                        onMouseDown={() =>
+                          simulateKeyPress(controls.gripper.positive)
+                        }
+                        onMouseUp={() =>
+                          simulateKeyRelease(controls.gripper.positive)
+                        }
+                        disabled={!teleopState?.isActive}
+                      />
+                      <VirtualKey
+                        label="C"
+                        subLabel="Grip-"
+                        isPressed={
+                          !!keyStates[controls.gripper.negative]?.pressed
+                        }
+                        onMouseDown={() =>
+                          simulateKeyPress(controls.gripper.negative)
+                        }
+                        onMouseUp={() =>
+                          simulateKeyRelease(controls.gripper.negative)
+                        }
+                        disabled={!teleopState?.isActive}
+                      />
+                    </div>
+                    <span className="font-bold text-sm font-sans">
+                      Roll/Grip
+                    </span>
+                  </div>
+                </div>
+                <div className="pt-4 border-t border-white/10">
+                  <div className="flex justify-between items-center font-mono text-sm">
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Keyboard className="w-4 h-4" />
+                      <span>
+                        Active Keys:{" "}
+                        {
+                          Object.values(keyStates).filter((k) => k.pressed)
+                            .length
+                        }
+                      </span>
+                    </div>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div
+                            className={cn(
+                              "w-10 h-6 border rounded-md flex items-center justify-center font-mono text-xs transition-all",
+                              "select-none user-select-none",
+                              !teleopState?.isActive &&
+                                "opacity-50 cursor-not-allowed",
+                              teleopState?.isActive &&
+                                "cursor-pointer hover:bg-white/5",
+                              keyStates[controls.stop]?.pressed
+                                ? "bg-destructive text-destructive-foreground border-destructive"
+                                : "bg-background"
+                            )}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              if (teleopState?.isActive) {
+                                simulateKeyPress(controls.stop);
+                              }
+                            }}
+                            onMouseUp={(e) => {
+                              e.preventDefault();
+                              if (teleopState?.isActive) {
+                                simulateKeyRelease(controls.stop);
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              e.preventDefault();
+                              if (teleopState?.isActive) {
+                                simulateKeyRelease(controls.stop);
+                              }
+                            }}
+                          >
+                            ESC
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent>Emergency Stop</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       </Card>
     </>

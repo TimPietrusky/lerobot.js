@@ -60,6 +60,13 @@ export type {
   RobotRecordingData,
 } from "./types/recording.js";
 
+export type {
+  HandTrackingConfig,
+  HandKeypoint,
+  HandKeypoints,
+  HandTrackingState,
+} from "./types/hand_tracking.js";
+
 // Utilities (advanced users)
 export { WebSerialPortWrapper } from "./utils/serial-port-wrapper.js";
 export {
@@ -71,6 +78,7 @@ export {
   SO100_KEYBOARD_CONTROLS,
 } from "./robots/so100_config.js";
 export { KEYBOARD_TELEOPERATOR_DEFAULTS } from "./teleoperators/index.js";
+export { renderHandKeypoints } from "./teleoperators/hand_tracking/visualization.js";
 
 // Record
 export { LeRobotDatasetRecorder, LeRobotEpisode } from "./record.js";

@@ -88,13 +88,24 @@ export interface GamepadTeleoperatorConfig extends BaseTeleoperatorConfig {
 }
 
 /**
+ * Hand tracking teleoperator configuration
+ */
+export interface HandTrackingTeleoperatorConfig extends BaseTeleoperatorConfig {
+  type: "hand-tracking";
+  videoElement?: HTMLVideoElement;
+  mediaStream?: MediaStream;
+  handTrackingConfig?: any;
+}
+
+/**
  * Union type for all teleoperator configurations
  */
 export type TeleoperatorConfig =
   | KeyboardTeleoperatorConfig
   | LeaderArmTeleoperatorConfig
   | DirectTeleoperatorConfig
-  | GamepadTeleoperatorConfig;
+  | GamepadTeleoperatorConfig
+  | HandTrackingTeleoperatorConfig;
 
 /**
  * Main teleoperation configuration

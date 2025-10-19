@@ -12,3 +12,4 @@ export {
   KEYBOARD_TELEOPERATOR_DEFAULTS,
 } from "./keyboard-teleoperator.js";
 export { DirectTeleoperator } from "./direct-teleoperator.js";
+export { HandTrackingTeleoperator } from "./hand_tracking_teleoperator.js";

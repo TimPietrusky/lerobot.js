@@ -71,6 +71,9 @@
     "@aws-sdk/client-s3": "^3.856.0",
     "@aws-sdk/lib-storage": "^3.856.0",
     "@huggingface/hub": "^2.4.0",
+    "@tensorflow/tfjs-backend-webgl": "^4.11.0",
+    "@tensorflow/tfjs-core": "^4.11.0",
+    "@tensorflow-models/hand-pose-detection": "^2.0.1",
     "apache-arrow": "^21.0.0",
     "jszip": "^3.10.1",
     "parquet-wasm": "^0.6.1"
