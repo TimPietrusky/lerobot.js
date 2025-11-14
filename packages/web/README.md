@@ -451,67 +451,91 @@ setTimeout(async () => {
 - `getState(): RecordingState` - Current recording state
 - `result: Promise<RobotRecordingData>` - Promise that resolves when recording stops
 
-#### Why Explicit Teleoperator Dependency?
-
-- 🎯 **Clear**: You know exactly what gets recorded
-- 🔧 **Flexible**: Can record from any teleoperator
-- 🧪 **Testable**: Easy to mock teleoperator for testing
-- 📦 **Reusable**: Same teleoperator can serve multiple recorders
-
 ---
 
 ## Advanced Dataset Recording and Export
 
 The LeRobot.js library provides functionality to record teleoperator data and export it in the LeRobot dataset format, compatible with machine learning models.
 
-### `LeRobotDatasetRecorder`
+### `record(config): Promise<RecordProcess>`
 
 Records teleoperator movements and camera streams, then exports them in the LeRobot dataset format.
 
 ```typescript
-import { LeRobotDatasetRecorder } from "@lerobot/web";
+import { record } from "@lerobot/web";
 
-// Create a recorder with teleoperator and video streams
-const recorder = new LeRobotDatasetRecorder(
-  [teleoperator], // Array of teleoperators to record, currently only supports 1 teleoperator
-  { main: videoStream }, // Video streams by camera key
-  30, // Target FPS
-  "Pick and place task" // Task description
-);
+// Create and start recording
+const recordProcess = await record({
+  teleoperator, // The teleoperator controlling the robot
+  videoStreams: {
+    main: mainCameraStream, // Optional: main camera stream
+    wrist: wristCameraStream, // Optional: additional cameras
+  },
+  options: {
+    fps: 30, // Target frames per second (default: 30)
+    taskDescription: "Pick and place task",
+    onStateUpdate: (state) => {
+      console.log(
+        `Recording: ${state.frameCount} frames, ${state.episodeCount} episodes`
+      );
+    },
+  },
+});
 
 // Start recording
-await recorder.startRecording();
+recordProcess.start();
 
 // ... robot performs task ...
 
-// Stop recording and get the data
-const recordingData = await recorder.stopRecording();
+// Stop recording and export
+const robotData = await recordProcess.stop();
 
-// Export the dataset in various formats
-// 1. As a downloadable zip file
-await recorder.exportForLeRobot("zip-download");
+// Export the dataset
+// As a downloadable zip file
+await recordProcess.exportForLeRobot?.("zip-download");
 
-// 2. Upload to Hugging Face
-const hfUploader = await recorder.exportForLeRobot("huggingface", {
-  repoName: "my-robot-dataset",
-  accessToken: "hf_...",
-});
-
-// 3. Upload to S3
-const s3Uploader = await recorder.exportForLeRobot("s3", {
-  bucketName: "my-bucket",
-  accessKeyId: "AKIA...",
-  secretAccessKey: "...",
-  region: "us-east-1",
-});
+// Or get blobs for custom upload logic
+const blobArray = await recordProcess.exportForLeRobot?.("blobs");
 ```
 
 #### Key Features
 
-- **Multi-source Recording**: Records teleoperator movements and synchronized video
-- **Regular Interpolation**: Generates frames at consistent intervals with `episodes` getter
-- **Multiple Export Formats**: Supports local download, Hugging Face, and S3 upload
+- **Simple Function API**: Matches familiar patterns from `calibrate()` and `teleoperate()`
+- **Multi-Camera Recording**: Records teleoperator movements and synchronized video from multiple cameras
+- **Real-time State Tracking**: Get live feedback with `onStateUpdate` callback
+- **Standard Export Formats**: Download as ZIP or get raw blobs for custom processing
 - **LeRobot Dataset Format**: Follows the standard format for compatibility with ML models
+
+#### Advanced Use Cases: Direct Class Access
+
+For applications needing advanced features like episode persistence, dynamic camera management, or custom metadata, use `LeRobotDatasetRecorder` directly:
+
+```typescript
+import { LeRobotDatasetRecorder } from "@lerobot/web";
+
+const recorder = new LeRobotDatasetRecorder(
+  [teleoperator],
+  { main: videoStream },
+  30,
+  "Task description"
+);
+
+// Advanced features
+recorder.addVideoStream("wrist", wristCameraStream); // Add cameras dynamically
+recorder.setRobotLabel("so100"); // Custom metadata
+recorder.teleoperatorData; // Direct access to episodes
+recorder.videoStreams; // Direct access to video streams
+
+await recorder.startRecording();
+// ... robot performs task ...
+await recorder.stopRecording();
+const data = await recorder.exportForLeRobot("blobs");
+```
+
+**When to use each approach:**
+
+- **`record()` function**: Simple recordings with static camera setup
+- **`LeRobotDatasetRecorder` class**: Complex workflows with dynamic cameras, episode persistence, or custom metadata
 
 > **Note:** The dataset statistical data currently generated is incorrect and needs to be updated in a future release.
 

@@ -36,8 +36,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { LeRobotDatasetRecorder, LeRobotEpisode } from "@lerobot/web";
+import { record, LeRobotEpisode } from "@lerobot/web";
+import type { RecordProcess } from "@lerobot/web";
 import { TeleoperatorEpisodesView } from "./teleoperator-episodes-view";
+import { uploadToHuggingFace } from "@/utils/dataset-uploader";
 
 interface RecorderProps {
   teleoperators: any[];
@@ -135,51 +137,56 @@ export function Recorder({
     { status: "idle" } | { status: "uploading" } | { status: "done" }
   >({ status: "idle" });
 
-  const recorderRef = useRef<LeRobotDatasetRecorder | null>(null);
+  const recordProcessRef = useRef<RecordProcess | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const { toast } = useToast();
 
   // Initialize the recorder when teleoperators are available,
   // and attach any already-added cameras before recording starts
   useEffect(() => {
-    if (teleoperators.length > 0 && !recorderRef.current) {
-      recorderRef.current = new LeRobotDatasetRecorder(
-        teleoperators,
-        {},
-        30,
-        "Robot teleoperation recording"
-      );
+    if (teleoperators.length > 0 && !recordProcessRef.current) {
+      (async () => {
+        const recordProcess = await record({
+          teleoperator: teleoperators[0],
+          videoStreams: additionalCameras,
+          options: {
+            fps: 30,
+            taskDescription: "Robot teleoperation recording",
+          },
+        });
+        recordProcessRef.current = recordProcess;
+        const recorder = recordProcess.recorder;
 
-      // Populate robot label for dataset metadata (e.g., so100)
-      try {
-        const type = (robot?.robotType || "").toString();
-        const family = type.split("_")[0] || type || "unknown";
-        (recorderRef.current as any).setRobotLabel?.(family);
-      } catch {}
-
-      // Restore episodes if any were persisted
-      if (persistedEpisodes.length > 0) {
-        (recorderRef.current as any).teleoperatorData = [...persistedEpisodes];
-        setCurrentEpisode(persistedEpisodes.length - 1);
-      }
-
-      // Attach any cameras that were configured before control was enabled
-      const recorder = recorderRef.current as any;
-      for (const [key, stream] of Object.entries(additionalCameras)) {
+        // Populate robot label for dataset metadata (e.g., so100)
         try {
-          recorder.addVideoStream(key, stream as MediaStream);
-        } catch (e) {
-          console.warn("[Recorder] init: addVideoStream failed", key, e);
+          const type = (robot?.robotType || "").toString();
+          const family = type.split("_")[0] || type || "unknown";
+          (recorder as any).setRobotLabel?.(family);
+        } catch {}
+
+        // Restore episodes if any were persisted
+        if (persistedEpisodes.length > 0) {
+          (recorder as any).teleoperatorData = [...persistedEpisodes];
+          setCurrentEpisode(persistedEpisodes.length - 1);
         }
-      }
+
+        // Attach any cameras that were configured before control was enabled
+        for (const [key, stream] of Object.entries(additionalCameras)) {
+          try {
+            (recorder as any).addVideoStream(key, stream as MediaStream);
+          } catch (e) {
+            console.warn("[Recorder] init: addVideoStream failed", key, e);
+          }
+        }
+      })();
     }
   }, [teleoperators, persistedEpisodes, additionalCameras]);
 
   // Sync additional cameras into recorder without re-creating it
   useEffect(() => {
-    if (!recorderRef.current) return;
+    if (!recordProcessRef.current) return;
     if (isRecording) return; // don't change streams during recording
-    const recorder = recorderRef.current as any;
+    const recorder = recordProcessRef.current.recorder as any;
     for (const [key, stream] of Object.entries(additionalCameras)) {
       const existing = recorder.videoStreams?.[key] as MediaStream | undefined;
       if (!existing) {
@@ -211,7 +218,7 @@ export function Recorder({
 
   // Simple recording start - just like the original working version
   const handleStartRecordingClick = async () => {
-    if (!recorderRef.current) {
+    if (!recordProcessRef.current) {
       toast({
         title: "Recording Error",
         description: "Recorder not ready yet. Please enable control first.",
@@ -222,16 +229,19 @@ export function Recorder({
 
     try {
       // Default task index (episode index is auto-managed by recorder now)
-      recorderRef.current.setTaskIndex(0);
+      (recordProcessRef.current.recorder as any).setTaskIndex(0);
 
       // Start recording
-      recorderRef.current.startRecording();
+      recordProcessRef.current.start();
       setIsRecording(true);
       setHasRecordedFrames(true);
 
       // Sync current episode to recorder's latest
       setCurrentEpisode(
-        Math.max(0, (recorderRef.current.teleoperatorData.length || 1) - 1)
+        Math.max(
+          0,
+          (recordProcessRef.current.recorder.teleoperatorData.length || 1) - 1
+        )
       );
     } catch (error) {
       const errorMessage =
@@ -245,16 +255,18 @@ export function Recorder({
   };
 
   const handleStopRecording = async () => {
-    if (!recorderRef.current || !isRecording) {
+    if (!recordProcessRef.current || !isRecording) {
       return;
     }
 
     try {
-      const result = await recorderRef.current.stopRecording();
+      const result = await recordProcessRef.current.stop();
       setIsRecording(false);
 
       // Persist episodes when stopping recording
-      setPersistedEpisodes([...recorderRef.current.teleoperatorData]);
+      setPersistedEpisodes([
+        ...recordProcessRef.current.recorder.teleoperatorData,
+      ]);
 
       // Force a small delay to ensure videoBlobs populated before export
       await new Promise((r) => setTimeout(r, 50));
@@ -270,12 +282,12 @@ export function Recorder({
   };
 
   const handleDeleteEpisodes = async () => {
-    if (recorderRef.current) {
-      recorderRef.current.clearRecording();
+    if (recordProcessRef.current) {
+      (recordProcessRef.current.recorder as any).clearRecording();
 
       // If currently recording, create a new episode so recording can continue
       if (isRecording) {
-        (recorderRef.current as any).teleoperatorData.push(
+        (recordProcessRef.current.recorder as any).teleoperatorData.push(
           new LeRobotEpisode()
         );
       }
@@ -294,14 +306,14 @@ export function Recorder({
   };
 
   const handleNextEpisode = () => {
-    if (!isRecording || !recorderRef.current) {
+    if (!isRecording || !recordProcessRef.current) {
       return;
     }
 
     // Finalize current video segment and start a new one; advances episode index
-    recorderRef.current
+    (recordProcessRef.current.recorder as any)
       .nextEpisodeSegment()
-      .then((newIndex) => setCurrentEpisode(newIndex))
+      .then((newIndex: number) => setCurrentEpisode(newIndex))
       .catch(() => {
         /* noop */
       });
@@ -769,12 +781,12 @@ export function Recorder({
   }, [availableCameras, cameraPermissionState, restoreSavedCameras]);
 
   const handleDownloadZip = async () => {
-    if (!recorderRef.current) return;
+    if (!recordProcessRef.current) return;
     try {
       if (isRecording) {
         await handleStopRecording();
       }
-      await recorderRef.current.exportForLeRobot("zip-download");
+      await recordProcessRef.current.exportForLeRobot("zip-download");
     } catch (e) {
       toast({
         title: "Export Error",
@@ -788,7 +800,7 @@ export function Recorder({
   };
 
   const handleUploadToHuggingFace = async () => {
-    if (!recorderRef.current) return;
+    if (!recordProcessRef.current) return;
 
     if (!recorderSettings.huggingfaceApiKey) {
       toast({
@@ -805,14 +817,17 @@ export function Recorder({
         (recorderSettings.huggingfaceRepoName || "").trim() ||
         `lerobot-recording-${Date.now()}`;
 
-      const uploader = await recorderRef.current.exportForLeRobot(
-        "huggingface",
-        {
-          repoName,
-          accessToken: recorderSettings.huggingfaceApiKey,
-          // @ts-expect-error: library supports privateRepo via options passthrough
-          privateRepo: !!recorderSettings.huggingfacePrivate,
-        }
+      // Get blobs from recorder
+      const blobArray = await recordProcessRef.current.exportForLeRobot(
+        "blobs"
+      );
+
+      // Upload using demo utility
+      const uploader = await uploadToHuggingFace(
+        blobArray,
+        recorderSettings.huggingfaceApiKey,
+        repoName,
+        !!recorderSettings.huggingfacePrivate
       );
 
       // Progress UI next to button
@@ -1239,7 +1254,8 @@ export function Recorder({
             onClick={() => setShowDeleteEpisodesDialog(true)}
             disabled={
               persistedEpisodes.length === 0 &&
-              (recorderRef.current?.teleoperatorData.length || 0) === 0
+              (recordProcessRef.current?.recorder.teleoperatorData.length ||
+                0) === 0
             }
           >
             <Trash2 className="w-4 h-4" />
@@ -1253,7 +1269,8 @@ export function Recorder({
             className="gap-2"
             onClick={handleDownloadZip}
             disabled={
-              recorderRef.current?.teleoperatorData.length === 0 || isRecording
+              recordProcessRef.current?.recorder.teleoperatorData.length ===
+                0 || isRecording
             }
           >
             <Download className="w-4 h-4" />
@@ -1264,7 +1281,8 @@ export function Recorder({
             className="gap-2 relative"
             onClick={handleUploadToHuggingFace}
             disabled={
-              recorderRef.current?.teleoperatorData.length === 0 ||
+              recordProcessRef.current?.recorder.teleoperatorData.length ===
+                0 ||
               isRecording ||
               !recorderSettings.huggingfaceApiKey ||
               uploadState.status === "uploading"
@@ -1288,7 +1306,9 @@ export function Recorder({
       <div className="border border-white/10 rounded-md overflow-hidden">
         <TeleoperatorEpisodesView
           teleoperatorData={
-            (uiTick, recorderRef.current?.teleoperatorData || persistedEpisodes)
+            (uiTick,
+            recordProcessRef.current?.recorder.teleoperatorData ||
+              persistedEpisodes)
           }
           isRecording={isRecording}
           refreshTick={uiTick}

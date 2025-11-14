@@ -4,8 +4,6 @@ import * as parquet from "parquet-wasm";
 import * as arrow from "apache-arrow";
 import JSZip from "jszip";
 import generateREADME from "./utils/record/generateREADME";
-import { LeRobotHFUploader } from "./hf_uploader";
-import { LeRobotS3Uploader } from "./s3_uploader";
 
 // declare a type leRobot action that's basically an array of numbers
 interface LeRobotAction {
@@ -1412,162 +1410,14 @@ export class LeRobotDatasetRecorder {
   }
 
   /**
-   * Uploads the LeRobot dataset to Hugging Face
-   *
-   * @param username Hugging Face username
-   * @param repoName Repository name for the dataset
-   * @param accessToken Hugging Face access token
-   * @returns The LeRobotHFUploader instance used for upload
-   */
-  async _exportForLeRobotHuggingface(
-    username: string,
-    repoName: string,
-    accessToken: string,
-    privateRepo: boolean = false
-  ) {
-    // Create the blobs array for upload
-    const blobArray = await this._exportForLeRobotBlobs();
-
-    // Create the uploader
-    const uploader = new LeRobotHFUploader(username, repoName);
-
-    // Convert blobs to File objects for HF uploader
-    const files = blobArray.map((item) => {
-      return {
-        path: item.path,
-        content: item.content,
-      };
-    });
-
-    // Generate a unique reference ID for tracking the upload
-    const referenceId = `lerobot-upload-${Date.now()}`;
-
-    // Start upload asynchronously so UI can subscribe to events immediately
-    (async () => {
-      try {
-        await uploader.createRepoAndUploadFiles(
-          files,
-          accessToken,
-          referenceId,
-          privateRepo,
-          "v2.1"
-        );
-        console.log(
-          `Successfully uploaded dataset to ${username}/${repoName} (v2.1)`
-        );
-      } catch (error: any) {
-        const message = (error && (error.message || `${error}`)) as string;
-        const invalidRev = message?.toLowerCase()?.includes("invalid rev id");
-        if (invalidRev) {
-          console.warn(
-            "v2.1 branch not available yet. Falling back to main for this upload."
-          );
-          try {
-            await uploader.createRepoAndUploadFiles(
-              files,
-              accessToken,
-              referenceId,
-              privateRepo,
-              "main"
-            );
-            console.log(
-              `Successfully uploaded dataset to ${username}/${repoName} (main)`
-            );
-          } catch (e2) {
-            console.error("Error uploading to main:", e2);
-          }
-          return;
-        }
-        console.error("Error uploading to Hugging Face:", error);
-      }
-    })();
-
-    return uploader;
-  }
-
-  /**
-   * Uploads the LeRobot dataset to Amazon S3
-   *
-   * @param bucketName S3 bucket name
-   * @param accessKeyId AWS access key ID
-   * @param secretAccessKey AWS secret access key
-   * @param region AWS region (default: us-east-1)
-   * @param prefix Optional prefix (folder) to upload files to within the bucket
-   * @returns The LeRobotS3Uploader instance used for upload
-   */
-  async _exportForLeRobotS3(
-    bucketName: string,
-    accessKeyId: string,
-    secretAccessKey: string,
-    region: string = "us-east-1",
-    prefix: string = ""
-  ) {
-    // Create the blobs array for upload
-    const blobArray = await this._exportForLeRobotBlobs();
-
-    // Create the uploader
-    const uploader = new LeRobotS3Uploader(bucketName, region);
-
-    // Convert blobs to File objects for S3 uploader
-    const files = blobArray.map((item) => {
-      return {
-        path: item.path,
-        content: item.content,
-      };
-    });
-
-    // Generate a unique reference ID for tracking the upload
-    const referenceId = `lerobot-s3-upload-${Date.now()}`;
-
-    try {
-      // Start the upload process
-      uploader.checkBucketAndUploadFiles(
-        files,
-        accessKeyId,
-        secretAccessKey,
-        prefix,
-        referenceId
-      );
-      console.log(`Successfully uploaded dataset to S3 bucket: ${bucketName}`);
-      return uploader;
-    } catch (error) {
-      console.error("Error uploading to S3:", error);
-      throw error;
-    }
-  }
-
-  /**
    * Exports the LeRobot dataset in various formats
    *
-   * @param format The export format - 'blobs', 'zip', 'zip-download', 'huggingface', or 's3'
-   * @param options Additional options for specific formats
-   * @param options.username Hugging Face username (if not provided for "huggingface" format, it will use the default username)
-   * @param options.repoName Hugging Face repository name (required for 'huggingface' format)
-   * @param options.accessToken Hugging Face access token (required for 'huggingface' format)
-   * @param options.bucketName S3 bucket name (required for 's3' format)
-   * @param options.accessKeyId AWS access key ID (required for 's3' format)
-   * @param options.secretAccessKey AWS secret access key (required for 's3' format)
-   * @param options.region AWS region (optional for 's3' format, default: us-east-1)
-   * @param options.prefix S3 prefix/folder (optional for 's3' format)
-   * @returns The exported data in the requested format or the uploader instance for 'huggingface'/'s3' formats
+   * @param format The export format - 'blobs', 'zip', or 'zip-download'
+   * @param options Additional options (currently unused)
+   * @returns The exported data in the requested format
    */
   async exportForLeRobot(
-    format:
-      | "blobs"
-      | "zip"
-      | "zip-download"
-      | "huggingface"
-      | "s3" = "zip-download",
-    options?: {
-      username?: string;
-      repoName?: string;
-      accessToken?: string;
-      bucketName?: string;
-      accessKeyId?: string;
-      secretAccessKey?: string;
-      region?: string;
-      prefix?: string;
-    }
+    format: "blobs" | "zip" | "zip-download" = "zip-download"
   ) {
     switch (format) {
       case "blobs":
@@ -1575,50 +1425,6 @@ export class LeRobotDatasetRecorder {
 
       case "zip":
         return this._exportForLeRobotZip();
-
-      case "huggingface":
-        // Validate required options for Hugging Face upload
-        if (!options || !options.repoName || !options.accessToken) {
-          throw new Error(
-            "Hugging Face upload requires repoName, and accessToken options"
-          );
-        }
-
-        if (!options.username) {
-          const hub = await import("@huggingface/hub");
-          const { name: username } = await hub.whoAmI({
-            accessToken: options.accessToken,
-          });
-          options.username = username;
-        }
-
-        return this._exportForLeRobotHuggingface(
-          options.username,
-          options.repoName,
-          options.accessToken,
-          (options as any).privateRepo ?? false
-        );
-
-      case "s3":
-        // Validate required options for S3 upload
-        if (
-          !options ||
-          !options.bucketName ||
-          !options.accessKeyId ||
-          !options.secretAccessKey
-        ) {
-          throw new Error(
-            "S3 upload requires bucketName, accessKeyId, and secretAccessKey options"
-          );
-        }
-
-        return this._exportForLeRobotS3(
-          options.bucketName,
-          options.accessKeyId,
-          options.secretAccessKey,
-          options.region,
-          options.prefix
-        );
 
       case "zip-download":
       default:
@@ -1697,7 +1503,7 @@ export async function record(config: RecordConfig): Promise<RecordProcess> {
   // Use the provided teleoperator (explicit dependency - good architecture!)
   const recorder = new LeRobotDatasetRecorder(
     [config.teleoperator], // Preserve excellent explicit dependency pattern
-    {}, // No video streams in simple API (move complex features to demo)
+    config.videoStreams || {}, // Optional video streams for multi-camera recording
     config.options?.fps || 30,
     config.options?.taskDescription || "Robot recording"
   );
@@ -1787,6 +1593,14 @@ export async function record(config: RecordConfig): Promise<RecordProcess> {
       }
       return resultPromise;
     },
+
+    async exportForLeRobot(
+      format: "blobs" | "zip" | "zip-download" = "zip-download"
+    ): Promise<any> {
+      return recorder.exportForLeRobot(format);
+    },
+
+    recorder,
   };
 
   return recordProcess;

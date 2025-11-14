@@ -68,9 +68,6 @@
     "access": "public"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.856.0",
-    "@aws-sdk/lib-storage": "^3.856.0",
-    "@huggingface/hub": "^2.4.0",
     "apache-arrow": "^21.0.0",
     "jszip": "^3.10.1",
     "parquet-wasm": "^0.6.1"

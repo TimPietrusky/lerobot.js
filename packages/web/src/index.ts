@@ -74,4 +74,3 @@ export { KEYBOARD_TELEOPERATOR_DEFAULTS } from "./teleoperators/index.js";
 
 // Record
 export { LeRobotDatasetRecorder, LeRobotEpisode } from "./record.js";
-export { LeRobotHFUploader } from "./hf_uploader.js";

@@ -3,6 +3,7 @@
  */
 
 import type { WebTeleoperator } from "../teleoperators/base-teleoperator.js";
+import type { LeRobotDatasetRecorder } from "../record.js";
 
 /**
  * Configuration for the simple record() function
@@ -10,6 +11,8 @@ import type { WebTeleoperator } from "../teleoperators/base-teleoperator.js";
 export interface RecordConfig {
   /** The teleoperator to record from (explicit dependency) */
   teleoperator: WebTeleoperator;
+  /** Optional video streams to record by camera name (e.g. { main: videoStream, wrist: videoStream }) */
+  videoStreams?: { [cameraName: string]: MediaStream };
   /** Optional recording configuration */
   options?: {
     /** Target frames per second (default: 30) */
@@ -35,6 +38,10 @@ export interface RecordProcess {
   getState(): RecordingState;
   /** Promise that resolves when recording is stopped with the data */
   result: Promise<RobotRecordingData>;
+  /** Export the recorded dataset in various formats */
+  exportForLeRobot(format?: "blobs" | "zip" | "zip-download"): Promise<any>;
+  /** Access to underlying recorder for advanced use cases (dynamic cameras, episode persistence, etc.) */
+  recorder: LeRobotDatasetRecorder;
 }
 
 /**
