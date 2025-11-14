@@ -592,6 +592,112 @@ await releaseMotors(robot, [1, 2, 3]);`}
                     </ul>
                   </div>
                 </div>
+
+                {/* record */}
+                <div>
+                  <h4 className="font-bold text-primary">record(config)</h4>
+                  <p className="text-sm mt-1">
+                    Records robot teleoperator data and camera streams in the LeRobot dataset format.
+                  </p>
+                  <CodeBlock>
+                    {`import { teleoperate, record } from "@lerobot/web";
+
+// Start teleoperation first
+const teleoperationProcess = await teleoperate({
+  robot: connectedRobot,
+  teleop: { type: "keyboard" },
+  calibrationData: calibrationData,
+});
+
+// Create recording with teleoperator
+const recordProcess = await record({
+  teleoperator: teleoperationProcess.teleoperator,
+  videoStreams: {
+    main: mainCameraStream,
+    wrist: wristCameraStream,
+  },
+  robotType: "so100",
+  options: {
+    fps: 30,
+    taskDescription: "Pick and place task",
+    onStateUpdate: (state) => {
+      console.log(\`Recording: \${state.frameCount} frames\`);
+    },
+  },
+});
+
+// Start both recording and teleoperation
+teleoperationProcess.start();
+recordProcess.start();
+
+// Stop recording when finished
+setTimeout(async () => {
+  const robotData = await recordProcess.stop();
+  await recordProcess.exportForLeRobot("zip-download");
+}, 30000);`}
+                  </CodeBlock>
+                  <div className="mt-3">
+                    <h5 className="font-bold text-sm tracking-wider">
+                      Options
+                    </h5>
+                    <ul className="mt-1 ml-4 space-y-1 text-sm">
+                      <li>
+                        • <code>teleoperator: WebTeleoperator</code> - The teleoperator to record from
+                      </li>
+                      <li>
+                        • <code>videoStreams?: {`{ [name: string]: MediaStream }`}</code> - Optional camera streams
+                      </li>
+                      <li>
+                        • <code>robotType?: string</code> - Robot metadata (e.g., "so100")
+                      </li>
+                      <li>
+                        • <code>options?: RecordOptions</code> - Optional configuration:
+                        <ul className="mt-1 ml-4 space-y-1">
+                          <li>
+                            • <code>fps?: number</code> - Target frames per second (default: 30)
+                          </li>
+                          <li>
+                            • <code>taskDescription?: string</code> - Task description
+                          </li>
+                          <li>
+                            • <code>onStateUpdate?: (state: RecordingState) =&gt; void</code> - State changes
+                          </li>
+                        </ul>
+                      </li>
+                    </ul>
+                  </div>
+                  <div className="mt-3">
+                    <h5 className="font-bold text-sm tracking-wider">
+                      Returns: RecordProcess
+                    </h5>
+                    <ul className="mt-1 ml-4 space-y-1 text-sm">
+                      <li>
+                        • <code>start(): void</code> - Start recording
+                      </li>
+                      <li>
+                        • <code>stop(): Promise&lt;RobotRecordingData&gt;</code> - Stop recording
+                      </li>
+                      <li>
+                        • <code>getState(): RecordingState</code> - Current recording state
+                      </li>
+                      <li>
+                        • <code>getEpisodeCount(): number</code> - Get number of episodes
+                      </li>
+                      <li>
+                        • <code>nextEpisode(): Promise&lt;number&gt;</code> - Start new episode
+                      </li>
+                      <li>
+                        • <code>clearEpisodes(): void</code> - Delete all episodes
+                      </li>
+                      <li>
+                        • <code>addCamera(name: string, stream: MediaStream): void</code> - Add camera dynamically
+                      </li>
+                      <li>
+                        • <code>exportForLeRobot(format?: "blobs" | "zip" | "zip-download"): Promise&lt;any&gt;</code> - Export dataset
+                      </li>
+                    </ul>
+                  </div>
+                </div>
               </div>
             </div>
           </TabsContent>
