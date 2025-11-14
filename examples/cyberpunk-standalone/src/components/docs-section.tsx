@@ -630,11 +630,12 @@ const recordProcess = await record({
 teleoperationProcess.start();
 recordProcess.start();
 
+// Manage recording during operation
+recordProcess.nextEpisode(); // Start new episode if needed
+
 // Stop recording when finished
-setTimeout(async () => {
-  const robotData = await recordProcess.stop();
-  await recordProcess.exportForLeRobot("zip-download");
-}, 30000);`}
+const robotData = await recordProcess.stop();
+await recordProcess.exportForLeRobot("zip-download");`}
                   </CodeBlock>
                   <div className="mt-3">
                     <h5 className="font-bold text-sm tracking-wider">
