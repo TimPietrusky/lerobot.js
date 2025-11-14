@@ -53,9 +53,8 @@ export function RecordingView({ robot }: RecordingViewProps) {
 
   const [isInitialized, setIsInitialized] = useState(false);
   const [controlEnabled, setControlEnabled] = useState(false);
-  const [selectedTeleoperatorType, setSelectedTeleoperatorType] = useState<
-    "direct" | "keyboard"
-  >("keyboard");
+  const [selectedTeleoperatorType, setSelectedTeleoperatorType] =
+    useState<"keyboard / direct">("keyboard / direct");
   const [showConfigure, setShowConfigure] = useState(false);
   const [recorderCallbacks, setRecorderCallbacks] = useState<{
     startRecording: () => Promise<void>;
@@ -158,16 +157,9 @@ export function RecordingView({ robot }: RecordingViewProps) {
     const success = await initializeTeleoperation();
     if (success) {
       // Start the appropriate teleoperator based on selection
-      if (
-        selectedTeleoperatorType === "keyboard" &&
-        keyboardProcessRef.current
-      ) {
-        keyboardProcessRef.current.start();
-      } else if (
-        selectedTeleoperatorType === "direct" &&
-        directProcessRef.current
-      ) {
-        directProcessRef.current.start();
+      if (selectedTeleoperatorType === "keyboard / direct") {
+        keyboardProcessRef.current?.start();
+        directProcessRef.current?.start();
       }
 
       setControlEnabled(true);
@@ -461,33 +453,28 @@ export function RecordingView({ robot }: RecordingViewProps) {
                         </label>
                         <Select
                           value={selectedTeleoperatorType}
-                          onValueChange={(value: "direct" | "keyboard") =>
-                            setSelectedTeleoperatorType(value)
+                          onValueChange={(value: string) =>
+                            setSelectedTeleoperatorType(
+                              value as "keyboard / direct"
+                            )
                           }
                         >
                           <SelectTrigger className="w-48 bg-black/20 border-white/10">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="direct">
-                              <div className="flex items-center gap-2">
-                                <Gamepad2 className="w-4 h-4" />
-                                Direct Control
-                              </div>
-                            </SelectItem>
-                            <SelectItem value="keyboard">
+                            <SelectItem value="keyboard / direct">
                               <div className="flex items-center gap-2">
                                 <Keyboard className="w-4 h-4" />
-                                Keyboard Control
+                                Keyboard / Direct Control
                               </div>
                             </SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        {selectedTeleoperatorType === "direct"
-                          ? "Programmatic control (use teleoperation page for manual sliders)"
-                          : "Move robot using keyboard keys (WASD, arrows, Q/E, O/C)"}
+                        Move robot using keyboard keys (WASD, arrows, Q/E, O/C)
+                        or direct control
                       </p>
                     </div>
                   )}
@@ -500,11 +487,7 @@ export function RecordingView({ robot }: RecordingViewProps) {
                       className="gap-2"
                       size="sm"
                     >
-                      {selectedTeleoperatorType === "keyboard" ? (
-                        <Keyboard className="w-4 h-4" />
-                      ) : (
-                        <Gamepad2 className="w-4 h-4" />
-                      )}
+                      <Keyboard className="w-4 h-4" />
                       {controlEnabled
                         ? `${selectedTeleoperatorType} Control Active`
                         : `Enable ${selectedTeleoperatorType} Control`}

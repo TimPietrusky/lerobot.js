@@ -55,7 +55,7 @@ interface TeleoperationViewProps {
   robot: RobotConnection;
 }
 
-type TeleoperatorType = "keyboard" | "direct" | "hand-tracking";
+type TeleoperatorType = "keyboard / direct" | "hand-tracking";
 
 interface HandTrackingSettings {
   cameraToControlScale: number;
@@ -124,7 +124,7 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
   });
 
   const [selectedTeleopType, setSelectedTeleopType] =
-    useState<TeleoperatorType>("keyboard");
+    useState<TeleoperatorType>("keyboard / direct");
   const [handTrackingSettings, setHandTrackingSettings] =
     useState<HandTrackingSettings>(DEFAULT_HAND_TRACKING_SETTINGS);
   const [showSettings, setShowSettings] = useState(false);
@@ -167,7 +167,7 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
     }
 
     try {
-      // Create keyboard teleoperation process
+      // Create keyboard / direct teleoperation process
       const keyboardConfig: TeleoperateConfig = {
         robot: robot,
         teleop: {
@@ -483,10 +483,8 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
     }
 
     try {
-      if (selectedTeleopType === "keyboard") {
+      if (selectedTeleopType === "keyboard / direct") {
         keyboardProcessRef.current?.start();
-        directProcessRef.current?.start();
-      } else if (selectedTeleopType === "direct") {
         directProcessRef.current?.start();
       } else if (selectedTeleopType === "hand-tracking") {
         handTrackingProcessRef.current?.start();
@@ -506,10 +504,7 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
 
   const handleStop = async () => {
     try {
-      if (
-        selectedTeleopType === "keyboard" ||
-        selectedTeleopType === "direct"
-      ) {
+      if (selectedTeleopType === "keyboard / direct") {
         keyboardProcessRef.current?.stop();
         directProcessRef.current?.stop();
       } else if (selectedTeleopType === "hand-tracking") {
@@ -699,8 +694,9 @@ export function TeleoperationView({ robot }: TeleoperationViewProps) {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="keyboard">Keyboard</SelectItem>
-                      <SelectItem value="direct">Direct</SelectItem>
+                      <SelectItem value="keyboard / direct">
+                        Keyboard / Direct
+                      </SelectItem>
                       <SelectItem value="hand-tracking">
                         Hand Tracking
                       </SelectItem>
