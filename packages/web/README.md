@@ -407,18 +407,16 @@ const teleoperationProcess = await teleoperate({
   calibrationData: calibrationData,
 });
 
-// 2. Create recording with explicit teleoperator dependency
+// 2. Create recording with teleoperator
 const recordProcess = await record({
-  teleoperator: teleoperationProcess.teleoperator, // ← Explicit dependency
+  teleoperator: teleoperationProcess.teleoperator,
+  videoStreams: {
+    main: mainCameraStream,
+  },
+  robotType: "so100",
   options: {
     fps: 30,
     taskDescription: "Pick and place task",
-    onDataUpdate: (data) => {
-      console.log(`Recorded ${data.frameCount} frames`);
-    },
-    onStateUpdate: (state) => {
-      console.log(`Recording active: ${state.isActive}`);
-    },
   },
 });
 
@@ -426,22 +424,23 @@ const recordProcess = await record({
 teleoperationProcess.start();
 recordProcess.start();
 
-// 4. Stop recording when finished
-setTimeout(async () => {
-  const robotData = await recordProcess.stop();
-  console.log("Episodes:", robotData.episodes);
-  console.log("Metadata:", robotData.metadata);
-}, 30000);
+// 4. Manage recording during operation
+recordProcess.nextEpisode(); // Start new episode if needed
+
+// 5. Stop recording and export
+const robotData = await recordProcess.stop();
+await recordProcess.exportForLeRobot("zip-download");
 ```
 
 #### Options
 
 - `config: RecordConfig`
-  - `teleoperator: WebTeleoperator` - The teleoperator to record from (explicit dependency)
+  - `teleoperator: WebTeleoperator` - The teleoperator to record from
+  - `videoStreams?: { [name: string]: MediaStream }` - Optional camera streams (e.g., `{ main: stream1, wrist: stream2 }`)
+  - `robotType?: string` - Robot metadata (e.g., "so100")
   - `options?: RecordOptions` - Optional recording configuration:
     - `fps?: number` - Target frames per second (default: 30)
-    - `taskDescription?: string` - Description of the recording task
-    - `onDataUpdate?: (data: RecordingData) => void` - Real-time data updates
+    - `taskDescription?: string` - Task description
     - `onStateUpdate?: (state: RecordingState) => void` - Recording state changes
 
 #### Returns: `RecordProcess`
@@ -449,7 +448,11 @@ setTimeout(async () => {
 - `start(): void` - Start recording
 - `stop(): Promise<RobotRecordingData>` - Stop recording and get data
 - `getState(): RecordingState` - Current recording state
-- `result: Promise<RobotRecordingData>` - Promise that resolves when recording stops
+- `getEpisodeCount(): number` - Get total episodes
+- `nextEpisode(): Promise<number>` - Start new episode
+- `clearEpisodes(): void` - Delete all episodes
+- `addCamera(name: string, stream: MediaStream): void` - Add camera dynamically
+- `exportForLeRobot(format?: "blobs" | "zip" | "zip-download"): Promise<any>` - Export dataset
 
 ---
 
