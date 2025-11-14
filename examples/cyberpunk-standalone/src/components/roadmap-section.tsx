@@ -37,13 +37,13 @@ const roadmapItems: RoadmapItem[] = [
     status: "completed",
   },
   {
-    title: "SO-100 leader arm",
-    description: "Leader arm teleoperation support for intuitive robot control",
-    status: "in_progress",
-  },
-  {
     title: "record",
     description: "Record robot trajectories and sensor data to create datasets",
+    status: "completed",
+  },
+  {
+    title: "SO-100 leader arm",
+    description: "Leader arm teleoperation support for intuitive robot control",
     status: "in_progress",
   },
   {
