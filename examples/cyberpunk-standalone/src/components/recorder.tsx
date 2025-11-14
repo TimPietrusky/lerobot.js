@@ -141,41 +141,41 @@ export function Recorder({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const { toast } = useToast();
 
-  // Initialize the recorder when teleoperators are available,
-  // and attach any already-added cameras before recording starts
+  // Initialize the recorder when teleoperators are available
   useEffect(() => {
     if (teleoperators.length > 0 && !recordProcessRef.current) {
       (async () => {
+        // Get robot type/family for metadata
+        let robotType = "unknown";
+        try {
+          const type = (robot?.robotType || "").toString();
+          robotType = type.split("_")[0] || type || "unknown";
+        } catch {}
+
+        // Create record process with upfront config
         const recordProcess = await record({
           teleoperator: teleoperators[0],
           videoStreams: additionalCameras,
+          robotType,
           options: {
             fps: 30,
             taskDescription: "Robot teleoperation recording",
           },
         });
         recordProcessRef.current = recordProcess;
-        const recorder = recordProcess.recorder;
-
-        // Populate robot label for dataset metadata (e.g., so100)
-        try {
-          const type = (robot?.robotType || "").toString();
-          const family = type.split("_")[0] || type || "unknown";
-          (recorder as any).setRobotLabel?.(family);
-        } catch {}
 
         // Restore episodes if any were persisted
         if (persistedEpisodes.length > 0) {
-          (recorder as any).teleoperatorData = [...persistedEpisodes];
+          recordProcess.restoreEpisodes(persistedEpisodes);
           setCurrentEpisode(persistedEpisodes.length - 1);
         }
 
         // Attach any cameras that were configured before control was enabled
         for (const [key, stream] of Object.entries(additionalCameras)) {
           try {
-            (recorder as any).addVideoStream(key, stream as MediaStream);
+            recordProcess.addCamera(key, stream as MediaStream);
           } catch (e) {
-            console.warn("[Recorder] init: addVideoStream failed", key, e);
+            console.warn("[Recorder] init: addCamera failed", key, e);
           }
         }
       })();
@@ -186,21 +186,14 @@ export function Recorder({
   useEffect(() => {
     if (!recordProcessRef.current) return;
     if (isRecording) return; // don't change streams during recording
-    const recorder = recordProcessRef.current.recorder as any;
+    const recordProcess = recordProcessRef.current;
+
+    // Add any new cameras
     for (const [key, stream] of Object.entries(additionalCameras)) {
-      const existing = recorder.videoStreams?.[key] as MediaStream | undefined;
-      if (!existing) {
-        try {
-          recorder.addVideoStream(key, stream);
-        } catch (e) {
-          console.warn("Failed to add video stream", key, e);
-        }
-      } else if (existing !== stream) {
-        // Update to new stream before recording starts
-        recorder.videoStreams[key] = stream;
-        if (!recorder.videoChunks?.[key]) {
-          recorder.videoChunks[key] = [];
-        }
+      try {
+        recordProcess.addCamera(key, stream);
+      } catch (e) {
+        console.warn("Failed to add camera", key, e);
       }
     }
   }, [additionalCameras, isRecording]);
@@ -228,9 +221,6 @@ export function Recorder({
     }
 
     try {
-      // Default task index (episode index is auto-managed by recorder now)
-      (recordProcessRef.current.recorder as any).setTaskIndex(0);
-
       // Start recording
       recordProcessRef.current.start();
       setIsRecording(true);
@@ -238,10 +228,7 @@ export function Recorder({
 
       // Sync current episode to recorder's latest
       setCurrentEpisode(
-        Math.max(
-          0,
-          (recordProcessRef.current.recorder.teleoperatorData.length || 1) - 1
-        )
+        Math.max(0, (recordProcessRef.current.getEpisodeCount() || 1) - 1)
       );
     } catch (error) {
       const errorMessage =
@@ -263,10 +250,7 @@ export function Recorder({
       const result = await recordProcessRef.current.stop();
       setIsRecording(false);
 
-      // Persist episodes when stopping recording
-      setPersistedEpisodes([
-        ...recordProcessRef.current.recorder.teleoperatorData,
-      ]);
+      // No need to manually persist - episodes are managed by record process
 
       // Force a small delay to ensure videoBlobs populated before export
       await new Promise((r) => setTimeout(r, 50));
@@ -283,14 +267,7 @@ export function Recorder({
 
   const handleDeleteEpisodes = async () => {
     if (recordProcessRef.current) {
-      (recordProcessRef.current.recorder as any).clearRecording();
-
-      // If currently recording, create a new episode so recording can continue
-      if (isRecording) {
-        (recordProcessRef.current.recorder as any).teleoperatorData.push(
-          new LeRobotEpisode()
-        );
-      }
+      recordProcessRef.current.clearEpisodes();
     }
 
     // Clear persisted episodes only if not recording
@@ -310,9 +287,9 @@ export function Recorder({
       return;
     }
 
-    // Finalize current video segment and start a new one; advances episode index
-    (recordProcessRef.current.recorder as any)
-      .nextEpisodeSegment()
+    // Finalize current video segment and start a new one
+    recordProcessRef.current
+      .nextEpisode()
       .then((newIndex: number) => setCurrentEpisode(newIndex))
       .catch(() => {
         /* noop */
@@ -1254,8 +1231,7 @@ export function Recorder({
             onClick={() => setShowDeleteEpisodesDialog(true)}
             disabled={
               persistedEpisodes.length === 0 &&
-              (recordProcessRef.current?.recorder.teleoperatorData.length ||
-                0) === 0
+              (recordProcessRef.current?.getEpisodeCount() || 0) === 0
             }
           >
             <Trash2 className="w-4 h-4" />
@@ -1269,8 +1245,8 @@ export function Recorder({
             className="gap-2"
             onClick={handleDownloadZip}
             disabled={
-              recordProcessRef.current?.recorder.teleoperatorData.length ===
-                0 || isRecording
+              (recordProcessRef.current?.getEpisodeCount() || 0) === 0 ||
+              isRecording
             }
           >
             <Download className="w-4 h-4" />
@@ -1281,8 +1257,7 @@ export function Recorder({
             className="gap-2 relative"
             onClick={handleUploadToHuggingFace}
             disabled={
-              recordProcessRef.current?.recorder.teleoperatorData.length ===
-                0 ||
+              (recordProcessRef.current?.getEpisodeCount() || 0) === 0 ||
               isRecording ||
               !recorderSettings.huggingfaceApiKey ||
               uploadState.status === "uploading"
@@ -1307,8 +1282,7 @@ export function Recorder({
         <TeleoperatorEpisodesView
           teleoperatorData={
             (uiTick,
-            recordProcessRef.current?.recorder.teleoperatorData ||
-              persistedEpisodes)
+            recordProcessRef.current?.getEpisodes() || persistedEpisodes)
           }
           isRecording={isRecording}
           refreshTick={uiTick}

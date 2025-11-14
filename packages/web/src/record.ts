@@ -1502,11 +1502,16 @@ import type {
 export async function record(config: RecordConfig): Promise<RecordProcess> {
   // Use the provided teleoperator (explicit dependency - good architecture!)
   const recorder = new LeRobotDatasetRecorder(
-    [config.teleoperator], // Preserve excellent explicit dependency pattern
-    config.videoStreams || {}, // Optional video streams for multi-camera recording
+    [config.teleoperator],
+    config.videoStreams || {},
     config.options?.fps || 30,
     config.options?.taskDescription || "Robot recording"
   );
+
+  // Set robot metadata if provided
+  if (config.robotType) {
+    (recorder as any).setRobotLabel?.(config.robotType);
+  }
 
   let startTime = 0;
   let resultPromise: Promise<RobotRecordingData> | null = null;
@@ -1517,7 +1522,7 @@ export async function record(config: RecordConfig): Promise<RecordProcess> {
       startTime = Date.now();
       recorder.startRecording();
 
-      // Set up state update polling for simple API callbacks
+      // Set up state update polling for callbacks
       if (config.options?.onStateUpdate || config.options?.onDataUpdate) {
         stateUpdateInterval = setInterval(() => {
           if (recorder.isRecording) {
@@ -1531,11 +1536,11 @@ export async function record(config: RecordConfig): Promise<RecordProcess> {
               config.options.onDataUpdate({
                 frameCount: state.frameCount,
                 currentEpisode: state.episodeCount,
-                recentFrames: [], // Simplified for basic API
+                recentFrames: [],
               });
             }
           }
-        }, 100); // 10fps updates for UI responsiveness
+        }, 100);
       }
     },
 
@@ -1547,12 +1552,11 @@ export async function record(config: RecordConfig): Promise<RecordProcess> {
 
       const result = await recorder.stopRecording();
 
-      // Convert to simple API format (pure motor data, no video complexity)
       const robotData: RobotRecordingData = {
         episodes: recorder.episodes.map((episode) => episode.frames),
         metadata: {
           fps: config.options?.fps || 30,
-          robotType: "unknown", // Could extract from teleoperator if available
+          robotType: config.robotType || "unknown",
           startTime: startTime,
           endTime: Date.now(),
           totalFrames: recorder.teleoperatorData.reduce(
@@ -1582,7 +1586,6 @@ export async function record(config: RecordConfig): Promise<RecordProcess> {
     get result(): Promise<RobotRecordingData> {
       if (!resultPromise) {
         resultPromise = new Promise((resolve) => {
-          // Return promise that resolves when stop() is called
           const originalStop = recordProcess.stop;
           recordProcess.stop = async () => {
             const data = await originalStop();
@@ -1594,13 +1597,40 @@ export async function record(config: RecordConfig): Promise<RecordProcess> {
       return resultPromise;
     },
 
+    getEpisodeCount(): number {
+      return recorder.teleoperatorData.length;
+    },
+
+    getEpisodes(): any[] {
+      return recorder.teleoperatorData;
+    },
+
+    clearEpisodes(): void {
+      (recorder as any).clearRecording();
+    },
+
+    async nextEpisode(): Promise<number> {
+      return (recorder as any).nextEpisodeSegment();
+    },
+
+    restoreEpisodes(episodes: any[]): void {
+      (recorder as any).teleoperatorData = [...episodes];
+    },
+
+    addCamera(name: string, stream: MediaStream): void {
+      (recorder as any).addVideoStream(name, stream);
+    },
+
+    removeCamera(name: string): void {
+      const videoStreams = (recorder as any).videoStreams || {};
+      delete videoStreams[name];
+    },
+
     async exportForLeRobot(
       format: "blobs" | "zip" | "zip-download" = "zip-download"
     ): Promise<any> {
       return recorder.exportForLeRobot(format);
     },
-
-    recorder,
   };
 
   return recordProcess;

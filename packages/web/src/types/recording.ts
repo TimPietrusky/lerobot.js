@@ -6,13 +6,19 @@ import type { WebTeleoperator } from "../teleoperators/base-teleoperator.js";
 import type { LeRobotDatasetRecorder } from "../record.js";
 
 /**
- * Configuration for the simple record() function
+ * Configuration for the record() function
+ * Supports both upfront configuration and runtime management
  */
 export interface RecordConfig {
   /** The teleoperator to record from (explicit dependency) */
   teleoperator: WebTeleoperator;
-  /** Optional video streams to record by camera name (e.g. { main: videoStream, wrist: videoStream }) */
+
+  /** Optional: video streams to record by camera name (e.g. { main: videoStream, wrist: videoStream }) */
   videoStreams?: { [cameraName: string]: MediaStream };
+
+  /** Optional: robot type/model name for metadata (e.g. "so100") */
+  robotType?: string;
+
   /** Optional recording configuration */
   options?: {
     /** Target frames per second (default: 30) */
@@ -28,8 +34,10 @@ export interface RecordConfig {
 
 /**
  * Process interface returned by record() function
+ * Supports flexible upfront config and runtime management
  */
 export interface RecordProcess {
+  // Recording control
   /** Start recording */
   start(): void;
   /** Stop recording and return the result */
@@ -38,10 +46,28 @@ export interface RecordProcess {
   getState(): RecordingState;
   /** Promise that resolves when recording is stopped with the data */
   result: Promise<RobotRecordingData>;
+
+  // Episode management (runtime)
+  /** Get total number of episodes recorded */
+  getEpisodeCount(): number;
+  /** Get raw episode data for viewing/analysis */
+  getEpisodes(): any[];
+  /** Delete all recorded episodes */
+  clearEpisodes(): void;
+  /** Start a new episode segment and get the new episode index */
+  nextEpisode(): Promise<number>;
+  /** Restore previously recorded episodes */
+  restoreEpisodes(episodes: any[]): void;
+
+  // Camera management (runtime)
+  /** Add a camera stream for recording */
+  addCamera(name: string, stream: MediaStream): void;
+  /** Remove a camera from recording */
+  removeCamera(name: string): void;
+
+  // Export
   /** Export the recorded dataset in various formats */
   exportForLeRobot(format?: "blobs" | "zip" | "zip-download"): Promise<any>;
-  /** Access to underlying recorder for advanced use cases (dynamic cameras, episode persistence, etc.) */
-  recorder: LeRobotDatasetRecorder;
 }
 
 /**
